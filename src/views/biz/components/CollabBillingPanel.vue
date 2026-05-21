@@ -212,6 +212,10 @@
     <!-- 上传付款凭证 -->
     <NModal v-model:show="uploadVoucherModalVisible" preset="card" title="上传付款凭证" :style="{ width: '620px' }">
       <NForm label-placement="left" label-width="110px">
+        <NAlert type="info" class="mb-12px" show-icon>
+          当前版本仅支持一次性全额付款，系统已默认带出未付金额，请核对后提交。
+        </NAlert>
+
         <NFormItem label="付款金额" required>
           <NInputNumber
             v-model:value="voucherForm.paymentAmount"
@@ -238,13 +242,15 @@
           <NInput v-model:value="voucherForm.transactionNo" placeholder="请输入交易流水号" />
         </NFormItem>
 
-        <NFormItem label="凭证文件ID" required>
-          <NDynamicTags v-model:value="voucherForm.fileIdTags" />
+        <NFormItem label="凭证文件" required>
+          <BizFileUpload
+            v-model="voucherForm.fileIdTags"
+            biz-type="TEMP"
+            file-stage="PAYMENT"
+            file-type="PAYMENT_PROOF"
+            :max="5"
+          />
         </NFormItem>
-
-        <NAlert type="info" class="mb-12px">
-          当前先使用文件 ID 标签提交。若后续你确认项目统一上传组件路径，我会把这里替换为真正的上传组件。
-        </NAlert>
 
         <NFormItem label="备注">
           <NInput v-model:value="voucherForm.remark" type="textarea" placeholder="请输入备注" />
@@ -354,6 +360,7 @@ import {
   syncStatusText,
   type CollabBillItemDisplay
 } from '@/service/api/biz//collabFinanceMeta';
+import BizFileUpload from "@/views/biz/components/BizFileUpload.vue";
 
 type RoleType = 'sender' | 'receiver' | 'auto';
 
