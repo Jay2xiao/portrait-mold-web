@@ -35,9 +35,12 @@ const props = withDefaults(
 );
 
 const emit = defineEmits<{
-  'update:modelValue': [value: Array<string | number>];
-  uploaded: [file: any];
+  (e: 'update:modelValue', value: Array<string | number>): void;
+  (e: 'change', value: Array<string | number>): void;
+  (e: 'success', value?: any): void;
+  (e: 'uploaded', value?: any): void;
 }>();
+
 
 const message = useMessage();
 
@@ -62,92 +65,6 @@ async function customRequest(options: UploadCustomRequestOptions) {
   } catch (e: any) {
     message.error(e?.message || '上传失败');
     options.onError();
-  }
-}
-
-async function uploadToQiniu1(rawFile: File, options: UploadCustomRequestOptions) {
-  try {
-    // 1. 获取上传凭证
-    const tokenRes = await fetchQiniuUploadToken({
-      originalName: rawFile.name,
-      sizeBytes: rawFile.size,
-      contentType: rawFile.type,
-      bizType: props.bizType || 'TEMP',
-      bizId: props.bizId,
-      orderId: props.orderId,
-      taskId: props.taskId,
-      fileStage: props.fileStage,
-      fileType: props.fileType
-    });
-    const tokenData = tokenRes.data || tokenRes;
-
-    // 2. 构建 FormData
-    const formData = new FormData();
-    formData.append('token', tokenData.uploadToken);
-    formData.append('key', tokenData.objectKey);
-    formData.append('file', rawFile);
-
-    // 3. 用 XMLHttpRequest 上传（绕过 fetch 的预检拦截）
-    const data = await new Promise<any>((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      xhr.open('POST', 'https://upload-z2.qbox.me', true);
-
-      // 上传进度
-      xhr.upload.onprogress = (e) => {
-        if (e.lengthComputable) {
-          const percent = Math.round((e.loaded / e.total) * 100);
-          options.onProgress({ percent });
-        }
-      };
-
-      xhr.onload = () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          try {
-            const res = JSON.parse(xhr.responseText);
-            resolve(res);
-          } catch {
-            reject(new Error('上传响应解析失败'));
-          }
-        } else {
-          reject(new Error(`上传失败，状态码：${xhr.status}`));
-        }
-      };
-
-      xhr.onerror = () => {
-        reject(new Error('网络错误，上传失败'));
-      };
-
-      // 发送请求
-      xhr.send(formData);
-    });
-
-    console.log('✅ 上传成功！', data);
-
-    // 4. 回调后端保存记录
-    const completeRes = await completeQiniuUpload({
-      originalName: rawFile.name,
-      sizeBytes: rawFile.size,
-      contentType: rawFile.type,
-      objectKey: tokenData.objectKey,
-      hash: data.hash,
-      bizType: props.bizType || 'TEMP',
-      bizId: props.bizId,
-      orderId: props.orderId,
-      taskId: props.taskId,
-      fileStage: props.fileStage,
-      fileType: props.fileType
-    });
-
-    const fileId = (completeRes.data || completeRes).id;
-    emit('update:modelValue', [...props.modelValue, fileId]);
-    emit('uploaded', completeRes.data || completeRes);
-
-    message.success('上传成功');
-    options.onFinish();
-  } catch (err) {
-    console.error('❌ 上传失败', err);
-    options.onError(err as any);
-    message.error('上传失败，请重试');
   }
 }
 

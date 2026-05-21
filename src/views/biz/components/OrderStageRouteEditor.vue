@@ -61,6 +61,9 @@
 <script setup lang="ts">
 import { nextTick, ref, watch } from 'vue';
 
+import type { SelectOption } from 'naive-ui';
+
+
 interface StageRouteForm {
   stageCode: string;
   stageNameSnapshot?: string;
@@ -71,11 +74,11 @@ interface StageRouteForm {
   remark?: string;
 }
 
-interface PartnerOption {
+interface PartnerOption extends SelectOption {
   label: string;
   value: string | number;
-  raw?: any;
 }
+
 
 const props = withDefaults(
   defineProps<{

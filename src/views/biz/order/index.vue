@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {computed, h, onMounted, reactive, ref} from 'vue';
+import {computed, h, onMounted, reactive, ref, VNodeChild} from 'vue';
 import {
   NAlert,
   NButton,
@@ -409,13 +409,13 @@ const columns = [
     title: '订单号',
     key: 'orderNo',
     width: 170,
-    fixed: 'left'
+    fixed: 'left' as const
   },
   {
     title: '客户',
     key: 'customerNameSnapshot',
     width: 120,
-    fixed: 'left'
+    fixed: 'left' as const
   },
   {
     title: '手机号',
@@ -634,10 +634,10 @@ const columns = [
     title: '操作',
     key: 'actions',
     width: 210,
-    fixed: 'right',
+    fixed: 'right' as const,
     render(row: OrderVO) {
 
-      const buttons: any[] = [];
+      const buttons: VNodeChild[] = [];
 
       if (row.businessStatus === 'WAIT_DELIVERY') {
         buttons.push(

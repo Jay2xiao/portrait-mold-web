@@ -24,6 +24,7 @@ export const views: Record<LastLevelRouteKey, RouteComponent | (() => Promise<Ro
   "user-center": () => import("@/views/_builtin/user-center/index.vue"),
   about: () => import("@/views/about/index.vue"),
   biz_auditorconfig: () => import("@/views/biz/auditorconfig/index.vue"),
+  biz_collabdashboard: () => import("@/views/biz/collabdashboard/index.vue"),
   biz_collaborder: () => import("@/views/biz/collaborder/index.vue"),
   biz_collabordersend: () => import("@/views/biz/collabordersend/index.vue"),
   biz_collabpartner: () => import("@/views/biz/collabpartner/index.vue"),

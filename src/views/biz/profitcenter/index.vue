@@ -115,7 +115,7 @@ const customerProfitColumns = [
     key: 'rank',
     width: 70,
     render(_: CustomerProfitRankVO, index: number) {
-      return index + 1;
+      return Number(index) + 1;
     }
   },
   {

@@ -53,7 +53,7 @@ const queryParams = reactive({
   orderNo: '',
   customerName: '',
   orderType: '',
-  onlyLoss: false
+  onlyLoss: null as BooleanSelectValue
 });
 
 const orderTypeOptions = [
@@ -62,10 +62,29 @@ const orderTypeOptions = [
   { label: '修模+打印', value: 'REPAIR_PRINT' }
 ];
 
+type BooleanSelectValue = 'true' | 'false' | null;
+
 const yesNoOptions = [
-  { label: '否', value: false },
-  { label: '是', value: true }
+  { label: '是', value: 'true' },
+  { label: '否', value: 'false' }
 ];
+
+function routeQueryBooleanSelect(value: unknown): BooleanSelectValue {
+  if (Array.isArray(value)) {
+    value = value[0];
+  }
+
+  if (value === 'true' || value === true) return 'true';
+  if (value === 'false' || value === false) return 'false';
+  return null;
+}
+
+function selectValueToBoolean(value: BooleanSelectValue) {
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  return undefined;
+}
+
 
 function money(value?: number) {
   return Number(value || 0).toFixed(2);
@@ -109,13 +128,13 @@ const columns = [
     title: '订单号',
     key: 'orderNoSnapshot',
     width: 170,
-    fixed: 'left'
+    fixed: 'left' as const
   },
   {
     title: '客户',
     key: 'customerNameSnapshot',
     width: 150,
-    fixed: 'left'
+    fixed: 'left' as const
   },
   {
     title: '订单类型',
@@ -215,7 +234,7 @@ const columns = [
     title: '操作',
     key: 'actions',
     width: 160,
-    fixed: 'right',
+    fixed: 'right' as const,
     render(row: OrderProfitSnapshotVO) {
       return h(NSpace, {}, {
         default: () => [
@@ -254,7 +273,7 @@ async function getList() {
       orderNo: queryParams.orderNo,
       customerName: queryParams.customerName,
       orderType: queryParams.orderType,
-      onlyLoss: queryParams.onlyLoss
+      onlyLoss: selectValueToBoolean(queryParams.onlyLoss)
     });
 
     tableData.value = unwrapRows(res);
@@ -270,7 +289,7 @@ function resetQuery() {
   queryParams.orderNo = '';
   queryParams.customerName = '';
   queryParams.orderType = '';
-  queryParams.onlyLoss = false;
+  queryParams.onlyLoss = null as BooleanSelectValue;
   queryParams.pageNum = 1;
   getList();
 }
@@ -313,7 +332,7 @@ function applyRouteQuery() {
   const q = route.query;
 
   if ('onlyLoss' in q) {
-    queryParams.onlyLoss = routeQueryBoolean(q.onlyLoss);
+    queryParams.onlyLoss = routeQueryBooleanSelect(q.onlyLoss);
   }
 
   queryParams.pageNum = 1;

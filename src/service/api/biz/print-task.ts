@@ -28,6 +28,7 @@ export interface PrintTaskVO {
 
   printerUserId?: string | number;
   printerName?: string;
+  deviceName?: string;
 
   status?: string;
 

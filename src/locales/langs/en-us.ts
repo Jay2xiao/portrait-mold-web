@@ -303,7 +303,7 @@ const local: App.I18n.Schema = {
     tool: 'System Tools',
     tool_gen: 'Code Generation',
     about: 'About'
-  },
+  } as any,
   menu: {
     system_tenant: 'Tenant Management',
     system_log: 'Log Management',

@@ -173,6 +173,7 @@ const routeMap: RouteMap = {
   "about": "/about",
   "biz": "/biz",
   "biz_auditorconfig": "/biz/auditorconfig",
+  "biz_collabdashboard": "/biz/collabdashboard",
   "biz_collaborder": "/biz/collaborder",
   "biz_collabordersend": "/biz/collabordersend",
   "biz_collabpartner": "/biz/collabpartner",

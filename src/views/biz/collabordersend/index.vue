@@ -8,9 +8,8 @@
 
     <NSpin :show="loading">
       <NSpace vertical :size="16">
-        <!-- 源订单选择 -->
         <NCard title="选择源订单" :bordered="false">
-          <NForm label-placement="left" label-width="110">
+          <NForm label-placement="left" label-width="110px">
             <NFormItem label="源订单" required>
               <NSelect
                 v-model:value="form.sourceOrderId"
@@ -41,185 +40,107 @@
               {{ serviceTypeText(sourceOrder.serviceType) }}
             </NDescriptionsItem>
 
-            <NDescriptionsItem label="路由汇总">
-              {{ routeSummaryLabel(sourceOrder.routeSummaryMode) }}
-            </NDescriptionsItem>
-
-            <NDescriptionsItem label="订单状态">
+            <NDescriptionsItem label="业务状态">
               {{ sourceOrder.businessStatus || '-' }}
             </NDescriptionsItem>
           </NDescriptions>
         </NCard>
 
-        <!-- 工序路由选择 -->
-        <NCard title="选择要外协的工序" :bordered="false">
-          <NSpace vertical :size="12">
-            <NEmpty v-if="!form.sourceOrderId" description="请先选择源订单" />
+        <NCard title="选择外协工序" :bordered="false">
+          <NAlert v-if="!form.sourceOrderId" type="info" class="mb-12px">
+            请先选择源订单。
+          </NAlert>
 
-            <NEmpty
-              v-else-if="candidateRoutes.length === 0"
-              description="当前订单没有可外协的工序"
-            />
+          <NAlert v-else-if="!externalRoutes.length" type="warning" class="mb-12px">
+            当前订单没有可外协的工序。请先在订单详情中配置工序路由。
+          </NAlert>
 
-            <NCheckboxGroup v-else v-model:value="selectedRouteKeys">
-              <NSpace vertical :size="12">
+          <template v-else>
+            <NCheckboxGroup v-model:value="selectedRouteKeys">
+              <NSpace vertical>
                 <NCard
-                  v-for="route in candidateRoutes"
-                  :key="routeIdKey(route.id)"
+                  v-for="item in externalRoutes"
+                  :key="routeIdKey(item.id)"
                   size="small"
+                  embedded
+                  class="route-card"
                 >
-                  <NSpace vertical :size="8">
-                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
-                      <NCheckbox
-                        :value="routeIdKey(route.id)"
-                        :disabled="!canSelectRoute(route)"
-                      >
-                        {{ route.stageNameSnapshot || stageLabel(route.stageCode) }}
-                      </NCheckbox>
+                  <NSpace justify="space-between" align="center">
+                    <NSpace vertical :size="4">
+                      <NSpace align="center">
+                        <NCheckbox
+                          :value="routeIdKey(item.id)"
+                          :disabled="!canSelectRoute(item)"
+                        >
+                          {{ item.stageNameSnapshot || item.stageCode || '-' }}
+                        </NCheckbox>
 
-                      <NSpace :size="8">
-                        <NTag :type="routeStatusTagType(route.routeStatus)" size="small">
-                          {{ routeStatusLabel(route.routeStatus) }}
+                        <NTag size="small" :type="routeStatusTagType(item.routeStatus)">
+                          {{ routeStatusText(item.routeStatus) }}
                         </NTag>
                       </NSpace>
-                    </div>
 
-                    <NDescriptions bordered :column="2" size="small">
-                      <NDescriptionsItem label="执行方式">
-                        {{ routeModeLabel(route.routeMode) }}
-                      </NDescriptionsItem>
+                      <div class="route-desc">
+                        目标商家：{{ item.targetTenantNameSnapshot || '-' }}
+                        <span v-if="item.collabOrderNoSnapshot">
+                          ，已关联协作单：{{ item.collabOrderNoSnapshot }}
+                        </span>
+                      </div>
+                    </NSpace>
 
-                      <NDescriptionsItem label="状态">
-                        {{ routeStatusLabel(route.routeStatus) }}
-                      </NDescriptionsItem>
-
-                      <NDescriptionsItem label="协作商家">
-                        {{ route.targetTenantNameSnapshot || route.targetTenantId || '-' }}
-                      </NDescriptionsItem>
-
-                      <NDescriptionsItem label="协作单号">
-                        {{ route.collabOrderNoSnapshot || '-' }}
-                      </NDescriptionsItem>
-                    </NDescriptions>
-
-                    <NAlert
-                      v-if="route.routeStatus === 'WAIT_TRIGGER'"
-                      type="warning"
-                      :bordered="false"
-                    >
-                      当前工序等待前序工序触发。若要合并发单，请同时选择前序工序。
-                    </NAlert>
-
-                    <NAlert
-                      v-if="route.collabOrderId"
-                      type="error"
-                      :bordered="false"
-                    >
-                      当前工序已经关联协作单，不能重复发单。
-                    </NAlert>
-
-                    <NAlert
-                      v-if="route.routeMode === 'EXTERNAL' && !route.targetTenantId"
-                      type="error"
-                      :bordered="false"
-                    >
-                      该工序未配置协作商家，不能发单。
-                    </NAlert>
+                    <NTag size="small">
+                      {{ item.stageCode || '-' }}
+                    </NTag>
                   </NSpace>
                 </NCard>
               </NSpace>
             </NCheckboxGroup>
-          </NSpace>
+          </template>
         </NCard>
 
-        <!-- 协作信息 -->
-        <NCard title="协作信息" :bordered="false">
-          <NDescriptions bordered :column="2" size="small">
-            <NDescriptionsItem label="协作范围">
-              {{ collabScopeText(actualCollabScope) }}
-            </NDescriptionsItem>
 
-            <NDescriptionsItem label="协作服务类型">
-              {{ serviceTypeText(actualServiceType) }}
-            </NDescriptionsItem>
+        <NCard title="协作服务信息" :bordered="false">
+          <NForm label-placement="left" label-width="120px">
+            <NFormItem label="协作范围">
+              <NTag type="info">
+                {{ collabScopeText(actualCollabScope) }}
+              </NTag>
+            </NFormItem>
 
-            <NDescriptionsItem label="接单商家">
-              {{ selectedReceiverTenantName || '-' }}
-            </NDescriptionsItem>
+            <NFormItem label="接单商家">
+              <NTag v-if="selectedReceiverTenantName" type="success">
+                {{ selectedReceiverTenantName }}
+              </NTag>
+              <NTag v-else type="warning">
+                请先选择外协工序
+              </NTag>
+            </NFormItem>
 
-            <NDescriptionsItem label="工序数量">
-              {{ selectedRoutes.length }}
-            </NDescriptionsItem>
-          </NDescriptions>
-
-          <NAlert
-            v-if="selectedRoutes.length > 0 && !sameMerchantOk"
-            type="error"
-            :bordered="false"
-            style="margin-top: 12px;"
-          >
-            同一张协作单只能选择同一个接单商家的工序。不同商家的工序请分别发单。
-          </NAlert>
-
-          <NAlert
-            v-if="missingReceiverTenant"
-            type="warning"
-            :bordered="false"
-            style="margin-top: 12px;"
-          >
-            当前选择的工序未配置接单商家，请先到订单工序路由中维护协作商家。
-          </NAlert>
-
-          <NAlert
-            v-if="selectedRoutes.length > 0 && !actualCollabScope"
-            type="warning"
-            :bordered="false"
-            style="margin-top: 12px;"
-          >
-            无法识别协作范围，请检查工序选择。
-          </NAlert>
-
-          <NAlert
-            v-if="selectedRoutes.length > 0 && !actualServiceType"
-            type="warning"
-            :bordered="false"
-            style="margin-top: 12px;"
-          >
-            无法识别协作服务类型，请检查工序选择。
-          </NAlert>
-        </NCard>
-
-        <!-- 发单表单 -->
-        <NCard title="协作要求" :bordered="false">
-          <NForm label-placement="left" label-width="110">
-            <NFormItem label="资料类型" required>
+            <NFormItem label="服务类型" required>
               <NSelect
-                v-model:value="form.materialPackageType"
-                :options="materialPackageOptions"
-                placeholder="请选择资料类型"
+                v-model:value="form.serviceType"
+                :options="serviceTypeOptions"
+                placeholder="请选择服务类型"
+                style="width: 260px"
               />
             </NFormItem>
 
-            <NAlert
-              v-if="actualServiceType === 'PRINT_ONLY'"
-              type="info"
-              :bordered="false"
-              style="margin-bottom: 12px;"
-            >
-              只打印协作必须上传高清照片和 AI 模型文件。
-            </NAlert>
+            <NFormItem label="资料包类型" required>
+              <NSelect
+                v-model:value="form.materialPackageType"
+                :options="materialPackageOptions"
+                placeholder="请选择资料包类型"
+                style="width: 300px"
+              />
+            </NFormItem>
 
-            <NFormItem
-              v-if="actualServiceType !== 'PRINT_ONLY'"
-              label="约定修模费"
-            >
+            <NFormItem label="修模费用">
               <NInputNumber
                 v-model:value="form.senderRepairFeeAmount"
                 :min="0"
                 :precision="2"
-                clearable
-                placeholder="可为空"
-                style="width: 240px"
+                placeholder="请输入修模费用"
+                style="width: 260px"
               />
             </NFormItem>
 
@@ -230,19 +151,17 @@
               />
             </NFormItem>
 
-            <NFormItem label="协作要求">
+            <NFormItem label="需求说明">
               <NInput
                 v-model:value="form.requirementDesc"
                 type="textarea"
-                :autosize="{ minRows: 3, maxRows: 6 }"
-                placeholder="请输入协作要求、注意事项、交付要求等"
+                placeholder="请输入修模、打印、发货等协作要求"
               />
             </NFormItem>
           </NForm>
         </NCard>
 
-        <!-- 上传资料 -->
-        <NCard title="上传资料" :bordered="false">
+        <NCard title="协作资料包" :bordered="false">
           <NSpace vertical :size="16">
             <NCard
               v-if="form.materialPackageType === 'RAW_PHOTO'"
@@ -250,8 +169,8 @@
               size="small"
             >
               <NSpace vertical>
-                <div style="color: #888">
-                  上传未修复照片，接单方会先处理高清图。
+                <div class="upload-desc">
+                  上传原始照片。接单方需要先处理高清图，再提交给发单方确认。
                 </div>
 
                 <BizFileUpload
@@ -264,7 +183,7 @@
                 />
 
                 <BizFileViewer
-                  v-if="rawPhotoFileIds.length > 0"
+                  v-if="rawPhotoFileIds.length"
                   :file-ids="rawPhotoFileIds"
                   mode="image"
                   :max="20"
@@ -280,8 +199,8 @@
               size="small"
             >
               <NSpace vertical>
-                <div style="color: #888">
-                  上传已经修复好的高清照片。
+                <div class="upload-desc">
+                  上传已经处理好的高清照片。
                 </div>
 
                 <BizFileUpload
@@ -294,7 +213,7 @@
                 />
 
                 <BizFileViewer
-                  v-if="hdPhotoFileIds.length > 0"
+                  v-if="hdPhotoFileIds.length"
                   :file-ids="hdPhotoFileIds"
                   mode="image"
                   :max="20"
@@ -310,7 +229,7 @@
               size="small"
             >
               <NSpace vertical>
-                <div style="color: #888">
+                <div class="upload-desc">
                   上传 AI 建好的模型文件，如 STL / OBJ / 3MF / ZIP 等。
                 </div>
 
@@ -324,9 +243,9 @@
                 />
 
                 <BizFileViewer
-                  v-if="aiModelFileIds.length > 0"
+                  v-if="aiModelFileIds.length"
                   :file-ids="aiModelFileIds"
-                  mode="file"
+                  mode="download"
                   :max="10"
                   :thumb-size="80"
                   show-name
@@ -336,7 +255,7 @@
 
             <NCard title="备注图" size="small">
               <NSpace vertical>
-                <div style="color: #888">
+                <div class="upload-desc">
                   可选，上传备注图、标注图、沟通说明图片。
                 </div>
 
@@ -350,7 +269,7 @@
                 />
 
                 <BizFileViewer
-                  v-if="remarkImageFileIds.length > 0"
+                  v-if="remarkImageFileIds.length"
                   :file-ids="remarkImageFileIds"
                   mode="image"
                   :max="10"
@@ -362,18 +281,10 @@
           </NSpace>
         </NCard>
 
-        <!-- 操作区 -->
         <NCard :bordered="false">
           <NSpace justify="end">
-            <NButton @click="goBack">
-              返回
-            </NButton>
-
-            <NButton
-              type="primary"
-              :loading="submitting"
-              @click="submit"
-            >
+            <NButton @click="goBack">返回</NButton>
+            <NButton type="primary" :loading="submitting" @click="submit">
               发送协作单
             </NButton>
           </NSpace>
@@ -394,7 +305,6 @@ import {
   NCheckboxGroup,
   NDescriptions,
   NDescriptionsItem,
-  NEmpty,
   NForm,
   NFormItem,
   NInput,
@@ -408,11 +318,9 @@ import {
 
 import BizFileViewer from '@/views/biz/components/BizFileViewer.vue';
 import BizFileUpload from '@/views/biz/components/BizFileUpload.vue';
+import CollabBillingPanel from '@/views/biz/components/CollabBillingPanel.vue';
 
-/**
- * 如果你项目里的源订单列表接口名不同，
- * 把这里替换成你实际的接口即可。
- */
+
 import {
   fetchCollabSourceOrders,
   sendCollabOrderByStageRoute
@@ -423,8 +331,14 @@ import {
   fetchOrderStageRoutes
 } from '@/service/api/biz/order';
 
+defineOptions({
+  name: 'BizCollabOrderSend'
+});
+
+type CollabId = string | number;
+
 interface SourceOrderVO {
-  id?: string | number;
+  id?: CollabId;
   orderNo?: string;
   orderNoSnapshot?: string;
   customerName?: string;
@@ -432,10 +346,11 @@ interface SourceOrderVO {
   serviceType?: string;
   routeSummaryMode?: string;
   businessStatus?: string;
+  [key: string]: any;
 }
 
 interface OrderStageRouteVO {
-  id?: string | number;
+  id?: CollabId;
   stageCode?: string;
   stageNameSnapshot?: string;
   stageSeq?: number;
@@ -454,10 +369,11 @@ interface OrderStageRouteVO {
   routeBundleNo?: string;
   targetTenantId?: string;
   targetTenantNameSnapshot?: string;
-  collabOrderId?: string | number;
+  collabOrderId?: CollabId;
   collabOrderNoSnapshot?: string;
   remark?: string;
   orderNoSnapshot?: string;
+  [key: string]: any;
 }
 
 const route = useRoute();
@@ -472,50 +388,44 @@ const sourceOrder = ref<SourceOrderVO | null>(null);
 const stageRoutes = ref<OrderStageRouteVO[]>([]);
 const selectedRouteKeys = ref<string[]>([]);
 
-const rawPhotoFileIds = ref<Array<string | number>>([]);
-const hdPhotoFileIds = ref<Array<string | number>>([]);
-const aiModelFileIds = ref<Array<string | number>>([]);
-const remarkImageFileIds = ref<Array<string | number>>([]);
+const rawPhotoFileIds = ref<CollabId[]>([]);
+const hdPhotoFileIds = ref<CollabId[]>([]);
+const aiModelFileIds = ref<CollabId[]>([]);
+const remarkImageFileIds = ref<CollabId[]>([]);
 
-const imageAccept = 'image/*,.jpg,.jpeg,.png,.gif,.webp,.bmp,.heic,.heif';
-const modelFileAccept = '.stl,.obj,.3mf,.ply,.glb,.gltf,.zip,.rar,.7z';
+const imageAccept = 'image/*';
+const modelFileAccept = '.stl,.obj,.3mf,.zip,.rar,.7z,.step,.stp';
 
 const form = reactive({
-  sourceOrderId: null as string | number | null,
-  materialPackageType: 'RAW_PHOTO' as 'RAW_PHOTO' | 'HD_PHOTO' | 'HD_PHOTO_AI_MODEL',
+  sourceOrderId: null as CollabId | null,
+  serviceType: 'REPAIR_PRINT',
+  materialPackageType: 'RAW_PHOTO',
   senderRepairFeeAmount: null as number | null,
   title: '',
   requirementDesc: ''
 });
 
-const sourceOrderOptions = computed(() => {
-  return sourceOrderRows.value.map(item => {
-    const orderNo = item.orderNo || item.orderNoSnapshot || item.id;
-    const customerName = item.customerNameSnapshot || item.customerName || '';
-    const serviceType = serviceTypeText(item.serviceType);
-    const routeSummary = routeSummaryLabel(item.routeSummaryMode);
+const serviceTypeOptions = [
+  { label: '只修模', value: 'REPAIR_ONLY' },
+  { label: '只打印', value: 'PRINT_ONLY' },
+  { label: '修模 + 打印', value: 'REPAIR_PRINT' }
+];
 
-    return {
-      label: `${orderNo}${customerName ? ` / ${customerName}` : ''}${serviceType ? ` / ${serviceType}` : ''}${routeSummary ? ` / ${routeSummary}` : ''}`,
-      value: String(item.id)
-    };
-  });
+const sourceOrderOptions = computed(() => {
+  return sourceOrderRows.value.map(item => ({
+    label: `${item.orderNo || item.orderNoSnapshot || item.id} / ${item.customerNameSnapshot || item.customerName || '-'}`,
+    value: item.id
+  }));
 });
 
-const candidateRoutes = computed(() => {
-  return stageRoutes.value.filter(item => item.routeMode === 'EXTERNAL');
+const externalRoutes = computed(() => {
+  return stageRoutes.value
+    .filter(item => item.routeMode === 'EXTERNAL')
+    .sort((a, b) => Number(a.stageSeq || 0) - Number(b.stageSeq || 0));
 });
 
 const selectedRoutes = computed(() => {
-  return candidateRoutes.value.filter(item => selectedRouteKeys.value.includes(routeIdKey(item.id)));
-});
-
-const selectedRoutesHaveTargetTenant = computed(() => {
-  if (selectedRoutes.value.length === 0) {
-    return true;
-  }
-
-  return selectedRoutes.value.every(item => !!item.targetTenantId);
+  return externalRoutes.value.filter(item => selectedRouteKeys.value.includes(routeIdKey(item.id)));
 });
 
 const selectedReceiverTenantIds = computed(() => {
@@ -524,90 +434,57 @@ const selectedReceiverTenantIds = computed(() => {
       selectedRoutes.value
         .map(item => item.targetTenantId)
         .filter(Boolean)
-        .map(String)
+        .map(item => String(item))
     )
   );
 });
 
-const routeTargetConflict = computed(() => {
-  return selectedRoutes.value.length > 0
-    && selectedRoutesHaveTargetTenant.value
-    && selectedReceiverTenantIds.value.length > 1;
-});
-
-const missingReceiverTenant = computed(() => {
-  return selectedRoutes.value.length > 0 && !selectedRoutesHaveTargetTenant.value;
-});
-
-const sameMerchantOk = computed(() => {
-  if (selectedRoutes.value.length === 0) {
-    return true;
-  }
-
-  return selectedRoutesHaveTargetTenant.value && selectedReceiverTenantIds.value.length === 1;
-});
-
 const selectedReceiverTenantId = computed(() => {
-  if (!sameMerchantOk.value) {
-    return '';
-  }
-
-  return selectedReceiverTenantIds.value[0] || '';
+  return selectedReceiverTenantIds.value.length === 1 ? selectedReceiverTenantIds.value[0] : '';
 });
 
 const selectedReceiverTenantName = computed(() => {
-  if (!selectedReceiverTenantId.value) {
-    return '';
-  }
-
-  const hit = selectedRoutes.value.find(item => String(item.targetTenantId) === selectedReceiverTenantId.value);
-
-  return hit?.targetTenantNameSnapshot || selectedReceiverTenantId.value;
+  const first = selectedRoutes.value.find(item => item.targetTenantId === selectedReceiverTenantId.value);
+  return first?.targetTenantNameSnapshot || '';
 });
 
 const actualCollabScope = computed(() => {
-  return calcCollabScope(selectedRoutes.value);
+  if (selectedRoutes.value.length <= 1) {
+    return 'SINGLE_STAGE';
+  }
+
+  return 'MULTI_STAGE';
 });
 
 const actualServiceType = computed(() => {
-  return calcServiceTypeByScope(actualCollabScope.value);
+  return form.serviceType || sourceOrder.value?.serviceType || 'REPAIR_PRINT';
 });
 
 const materialPackageOptions = computed(() => {
   if (actualServiceType.value === 'PRINT_ONLY') {
-    return [
-      {
-        label: '高清照片 + AI模型文件',
-        value: 'HD_PHOTO_AI_MODEL'
-      }
-    ];
+    return [{ label: '高清照片 + AI模型文件', value: 'HD_PHOTO_AI_MODEL' }];
   }
 
   return [
-    {
-      label: '原始照片',
-      value: 'RAW_PHOTO'
-    },
-    {
-      label: '高清照片',
-      value: 'HD_PHOTO'
-    },
-    {
-      label: '高清照片 + AI模型文件',
-      value: 'HD_PHOTO_AI_MODEL'
-    }
+    { label: '原始照片', value: 'RAW_PHOTO' },
+    { label: '高清照片', value: 'HD_PHOTO' },
+    { label: '高清照片 + AI模型文件', value: 'HD_PHOTO_AI_MODEL' }
   ];
 });
 
 watch(
   () => actualServiceType.value,
-  serviceType => {
-    if (serviceType === 'PRINT_ONLY' && form.materialPackageType !== 'HD_PHOTO_AI_MODEL') {
+  value => {
+    if (value === 'PRINT_ONLY') {
       form.materialPackageType = 'HD_PHOTO_AI_MODEL';
     }
   },
   { immediate: true }
 );
+
+onMounted(() => {
+  initPage();
+});
 
 async function initPage() {
   loading.value = true;
@@ -615,10 +492,7 @@ async function initPage() {
   try {
     await loadSourceOrders();
 
-    const sourceOrderId = route.query.sourceOrderId
-      ? String(route.query.sourceOrderId)
-      : '';
-
+    const sourceOrderId = route.query.sourceOrderId ? String(route.query.sourceOrderId) : '';
     const routeIds = route.query.routeIds
       ? String(route.query.routeIds)
         .split(',')
@@ -633,7 +507,6 @@ async function initPage() {
     }
 
     form.sourceOrderId = sourceOrderId;
-
     await loadSourceOrderDetail(sourceOrderId);
     await loadStageRoutes(sourceOrderId, routeIds);
   } catch (error) {
@@ -644,7 +517,6 @@ async function initPage() {
   }
 }
 
-
 async function loadSourceOrders() {
   const res = await fetchCollabSourceOrders({
     pageNum: 1,
@@ -654,19 +526,15 @@ async function loadSourceOrders() {
   sourceOrderRows.value = unwrapRows(res);
 }
 
-async function loadSourceOrderDetail(orderId: string | number) {
+async function loadSourceOrderDetail(orderId: CollabId) {
   const res = await fetchOrderDetail(orderId);
   const data = unwrapData<SourceOrderVO>(res);
-
   sourceOrder.value = data || { id: orderId };
-
   upsertSourceOrderRow(sourceOrder.value);
 }
 
 function upsertSourceOrderRow(row: SourceOrderVO) {
-  if (!row || row.id === undefined || row.id === null) {
-    return;
-  }
+  if (!row || row.id === undefined || row.id === null) return;
 
   const idx = sourceOrderRows.value.findIndex(item => String(item.id) === String(row.id));
 
@@ -681,7 +549,7 @@ function upsertSourceOrderRow(row: SourceOrderVO) {
   sourceOrderRows.value.unshift(row);
 }
 
-async function handleSourceOrderChange(value: string | number | null) {
+async function handleSourceOrderChange(value: CollabId | null) {
   resetCollabForm();
   stageRoutes.value = [];
   sourceOrder.value = null;
@@ -691,7 +559,7 @@ async function handleSourceOrderChange(value: string | number | null) {
     return;
   }
 
-  form.sourceOrderId = String(value);
+  form.sourceOrderId = value;
 
   loading.value = true;
 
@@ -703,8 +571,7 @@ async function handleSourceOrderChange(value: string | number | null) {
   }
 }
 
-
-async function loadStageRoutes(orderId: string | number, defaultSelectedKeys: string[] = []) {
+async function loadStageRoutes(orderId: CollabId, defaultSelectedKeys: string[] = []) {
   const res = await fetchOrderStageRoutes(orderId);
   stageRoutes.value = unwrapData<OrderStageRouteVO[]>(res) || [];
 
@@ -716,45 +583,30 @@ async function loadStageRoutes(orderId: string | number, defaultSelectedKeys: st
     };
   }
 
-  const externalRoutes = stageRoutes.value.filter(item => item.routeMode === 'EXTERNAL');
+  const selectableRoutes = externalRoutes.value.filter(canSelectRoute);
 
   if (defaultSelectedKeys.length > 0) {
     selectedRouteKeys.value = defaultSelectedKeys.filter(key => {
-      const target = externalRoutes.find(item => routeIdKey(item.id) === key);
-      return target && canSelectRoute(target);
+      const target = selectableRoutes.find(item => routeIdKey(item.id) === key);
+      return !!target;
     });
     return;
   }
-
-  const selectableRoutes = externalRoutes.filter(canSelectRoute);
 
   if (selectableRoutes.length === 1) {
     selectedRouteKeys.value = [routeIdKey(selectableRoutes[0].id)];
   }
 }
 
-function findSourceOrderById(id: string | number) {
-  return sourceOrderRows.value.find(item => String(item.id) === String(id));
+function canSelectRoute(item: OrderStageRouteVO) {
+  if (!item) return false;
+  if (item.collabOrderId) return false;
+  if (!item.targetTenantId) return false;
+  return ['PLANNED', 'WAIT_TRIGGER', undefined, null].includes(item.routeStatus as any);
 }
 
-function canSelectRoute(item: OrderStageRouteVO) {
-  if (!item) {
-    return false;
-  }
-
-  if (item.collabOrderId) {
-    return false;
-  }
-
-  if (item.routeMode !== 'EXTERNAL') {
-    return false;
-  }
-
-  if (!item.targetTenantId) {
-    return false;
-  }
-
-  return ['PLANNED', 'WAIT_TRIGGER'].includes(item.routeStatus || '');
+function routeIdKey(value?: CollabId) {
+  return value === undefined || value === null ? '' : String(value);
 }
 
 function validateBeforeSubmit() {
@@ -764,54 +616,22 @@ function validateBeforeSubmit() {
   }
 
   if (selectedRoutes.value.length === 0) {
-    message.warning('请选择要外协的工序');
+    message.warning('请选择需要外协的工序');
     return false;
   }
 
-  for (const routeItem of selectedRoutes.value) {
-    if (!canSelectRoute(routeItem)) {
-      message.warning(`工序当前状态不能发单：${routeItem.stageNameSnapshot || routeItem.stageCode}`);
-      return false;
-    }
-  }
-
-  const selectedStageCodes = selectedRoutes.value.map(item => item.stageCode);
-
-  for (const routeItem of selectedRoutes.value) {
-    if (
-      routeItem.routeStatus === 'WAIT_TRIGGER'
-      && routeItem.triggerAfterStageCode
-      && !selectedStageCodes.includes(routeItem.triggerAfterStageCode)
-    ) {
-      message.warning(
-        `${routeItem.stageNameSnapshot || routeItem.stageCode} 需要与前序工序一起合并发单，或等待前序工序完成后再发单`
-      );
-      return false;
-    }
-  }
-
-  if (!sameMerchantOk.value) {
-    message.warning('同一张协作单只能选择同一个接单商家，请重新选择工序');
-    return false;
-  }
-
-  if (!selectedReceiverTenantId.value) {
-    message.warning('当前选择的工序没有配置接单商家，请先到订单工序路由中配置');
-    return false;
-  }
-
-  if (!actualCollabScope.value) {
-    message.warning('无法识别协作范围');
+  if (selectedReceiverTenantIds.value.length !== 1) {
+    message.warning('请选择同一个接单商家的工序进行发单');
     return false;
   }
 
   if (!actualServiceType.value) {
-    message.warning('无法识别协作服务类型');
+    message.warning('请选择服务类型');
     return false;
   }
 
-  if (actualServiceType.value === 'PRINT_ONLY' && form.materialPackageType !== 'HD_PHOTO_AI_MODEL') {
-    message.warning('只打印协作必须选择“高清照片 + AI模型文件”');
+  if (!form.materialPackageType) {
+    message.warning('请选择资料包类型');
     return false;
   }
 
@@ -832,7 +652,7 @@ function validateBeforeSubmit() {
     }
 
     if (aiModelFileIds.value.length === 0) {
-      message.warning('请上传AI模型文件');
+      message.warning('请上传 AI 模型文件');
       return false;
     }
   }
@@ -855,11 +675,10 @@ function resetCollabForm() {
   form.requirementDesc = '';
 }
 
-
 function buildFiles() {
-  const files: Array<{ fileType: string; fileId: string | number }> = [];
+  const files: Array<{ fileType: string; fileId: CollabId }> = [];
 
-  const pushFiles = (fileType: string, ids: Array<string | number>) => {
+  const pushFiles = (fileType: string, ids: CollabId[]) => {
     ids.forEach(fileId => {
       if (fileId !== undefined && fileId !== null && fileId !== '') {
         files.push({
@@ -885,11 +704,7 @@ function buildFiles() {
 }
 
 async function submit() {
-  if (!validateBeforeSubmit()) {
-    return;
-  }
-
-  const receiverTenantId = selectedReceiverTenantId.value;
+  if (!validateBeforeSubmit()) return;
 
   submitting.value = true;
 
@@ -900,7 +715,7 @@ async function submit() {
         .map(item => item.id)
         .filter(item => item !== undefined && item !== null),
       collabScope: actualCollabScope.value,
-      receiverTenantId,
+      receiverTenantId: selectedReceiverTenantId.value,
       serviceType: actualServiceType.value,
       materialPackageType: form.materialPackageType,
       senderRepairFeeAmount: form.senderRepairFeeAmount,
@@ -914,27 +729,22 @@ async function submit() {
 
     const createdId =
       result && typeof result === 'object'
-        ? (result.id ?? result.collabOrderId ?? result.value ?? '')
+        ? result.id ?? result.collabOrderId ?? result.value ?? ''
         : result;
 
     message.success('协作单已发送');
 
-    if (createdId) {
-      router.push({
-        path: '/biz/collab/order',
-        query: {
+    router.push({
+      path: '/biz/collab/order',
+      query: createdId
+        ? {
           tab: 'SENT',
           collabOrderId: String(createdId)
         }
-      });
-    } else {
-      router.push({
-        path: '/biz/collab/order',
-        query: {
+        : {
           tab: 'SENT'
         }
-      });
-    }
+    });
   } catch (error) {
     console.error(error);
     message.error('发送协作单失败');
@@ -944,21 +754,19 @@ async function submit() {
 }
 
 function goBack() {
-  if (window.history.length > 1) {
-    router.back();
-    return;
-  }
-
-  router.push({
-    path: '/biz/collab/order',
-    query: {
-      tab: 'SENT'
-    }
-  });
+  router.back();
 }
 
-function routeIdKey(id: string | number | undefined | null) {
-  return String(id ?? '');
+function unwrapData<T = any>(res: any): T {
+  return res?.data ?? res;
+}
+
+function unwrapRows(res: any): any[] {
+  const data = unwrapData<any>(res);
+
+  if (Array.isArray(data)) return data;
+
+  return data?.rows || data?.records || data?.list || [];
 }
 
 function serviceTypeText(value?: string) {
@@ -968,160 +776,58 @@ function serviceTypeText(value?: string) {
     REPAIR_PRINT: '修模 + 打印'
   };
 
-  return map[value || ''] || value || '-';
-}
-
-function routeSummaryLabel(value?: string) {
-  const map: Record<string, string> = {
-    ALL_INTERNAL: '全内部',
-    PARTIAL_EXTERNAL: '部分外协',
-    ALL_EXTERNAL: '全外协'
-  };
-
-  return map[value || ''] || value || '-';
-}
-
-function routeModeLabel(value?: string) {
-  const map: Record<string, string> = {
-    INTERNAL: '内部执行',
-    EXTERNAL: '外部协作',
-    SKIP: '跳过'
-  };
-
-  return map[value || ''] || value || '-';
-}
-
-function routeStatusLabel(value?: string) {
-  const map: Record<string, string> = {
-    PLANNED: '已规划',
-    WAIT_TRIGGER: '等待触发',
-    DISPATCHED: '已派发',
-    RUNNING: '执行中',
-    WAIT_REVIEW: '待审核',
-    COMPLETED: '已完成',
-    REJECTED: '已拒绝',
-    CANCELLED: '已取消',
-    SKIPPED: '已跳过'
-  };
-
-  return map[value || ''] || value || '未派发';
-}
-
-function routeStatusTagType(value?: string) {
-  if (value === 'COMPLETED') return 'success';
-  if (value === 'RUNNING') return 'info';
-  if (value === 'DISPATCHED') return 'warning';
-  if (value === 'WAIT_REVIEW') return 'warning';
-  if (value === 'REJECTED' || value === 'CANCELLED') return 'error';
-  if (value === 'WAIT_TRIGGER') return 'default';
-  return 'default';
+  return value ? map[value] || value : '-';
 }
 
 function collabScopeText(value?: string) {
   const map: Record<string, string> = {
-    REPAIR_STAGE: '修模协作',
-    PRINT_STAGE: '打印协作',
-    REPAIR_PRINT_STAGE: '修模 + 打印协作',
-    DELIVERY_STAGE: '发货协作',
-    REPAIR_DELIVERY_STAGE: '修模 + 发货协作',
-    PRINT_DELIVERY_STAGE: '打印 + 发货协作',
-    REPAIR_PRINT_DELIVERY_STAGE: '修模 + 打印 + 发货协作'
+    SINGLE_STAGE: '单工序协作',
+    MULTI_STAGE: '多工序协作'
   };
 
-  return map[value || ''] || value || '-';
+  return value ? map[value] || value : '-';
 }
 
-function calcCollabScope(routes: OrderStageRouteVO[]) {
-  const stageCodes = routes.map(item => item.stageCode);
+function routeStatusText(value?: string) {
+  const map: Record<string, string> = {
+    PLANNED: '已计划',
+    WAIT_TRIGGER: '待触发',
+    DISPATCHED: '已派发',
+    RUNNING: '处理中',
+    WAIT_REVIEW: '待审核',
+    COMPLETED: '已完成',
+    REJECTED: '已驳回',
+    CANCELLED: '已取消',
+    SKIPPED: '已跳过'
+  };
 
-  const hasRepair = stageCodes.includes('REPAIR');
-  const hasPrint = stageCodes.includes('PRINT');
-
-  if (hasRepair && hasPrint) {
-    return 'REPAIR_PRINT_STAGE';
-  }
-
-  if (hasRepair) {
-    return 'REPAIR_STAGE';
-  }
-
-  if (hasPrint) {
-    return 'PRINT_STAGE';
-  }
-
-  return '';
+  return value ? map[value] || value : '待触发';
 }
 
-function calcServiceTypeByScope(scope: string) {
-  if (scope === 'REPAIR_STAGE') {
-    return 'REPAIR_ONLY';
-  }
-
-  if (scope === 'PRINT_STAGE') {
-    return 'PRINT_ONLY';
-  }
-
-  if (scope === 'REPAIR_PRINT_STAGE') {
-    return 'REPAIR_PRINT';
-  }
-
-  return '';
+function routeStatusTagType(value?: string) {
+  if (['COMPLETED'].includes(value || '')) return 'success';
+  if (['REJECTED', 'CANCELLED'].includes(value || '')) return 'error';
+  if (['RUNNING', 'WAIT_REVIEW', 'DISPATCHED'].includes(value || '')) return 'warning';
+  return 'default';
 }
-
-function unwrapData<T = any>(res: any): T {
-  if (res && typeof res === 'object' && 'data' in res) {
-    return res.data as T;
-  }
-
-  return res as T;
-}
-
-function unwrapRows<T = any>(res: any): T[] {
-  const data = unwrapData<any>(res);
-
-  if (Array.isArray(data)) {
-    return data;
-  }
-
-  if (Array.isArray(data?.rows)) {
-    return data.rows;
-  }
-
-  if (Array.isArray(data?.list)) {
-    return data.list;
-  }
-
-  if (Array.isArray(data?.records)) {
-    return data.records;
-  }
-
-  if (Array.isArray(res?.rows)) {
-    return res.rows;
-  }
-
-  if (Array.isArray(res?.data?.rows)) {
-    return res.data.rows;
-  }
-
-  if (Array.isArray(res?.data?.list)) {
-    return res.data.list;
-  }
-
-  if (Array.isArray(res?.data?.records)) {
-    return res.data.records;
-  }
-
-  return [];
-}
-
-watch(
-  () => [route.query.sourceOrderId, route.query.routeIds],
-  () => {
-    initPage();
-  },
-  {
-    immediate: true
-  }
-);
-
 </script>
+
+<style scoped>
+.mb-12px {
+  margin-bottom: 12px;
+}
+
+.upload-desc {
+  color: #888;
+  font-size: 13px;
+}
+
+.route-card {
+  width: 100%;
+}
+
+.route-desc {
+  color: #888;
+  font-size: 13px;
+}
+</style>

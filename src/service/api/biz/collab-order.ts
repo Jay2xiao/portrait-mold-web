@@ -10,6 +10,22 @@ export interface CollabOrderFileVO {
   visibleToReceiver?: string | boolean;
 }
 
+export type CollabFileId = string | number;
+
+export type CollabPrintStatus = 'WAIT_PRINT' | 'PRINTING' | 'PRINT_COMPLETED';
+
+export interface CollabPrintStatusSyncParams {
+  printStatus: CollabPrintStatus;
+  remark?: string;
+}
+
+export interface CollabDeliveryParams {
+  logisticsCompany: string;
+  logisticsNo: string;
+  fileIds?: CollabFileId[];
+  remark?: string;
+}
+
 
 export interface CollabOrderVO {
   id?: string | number;
@@ -111,7 +127,7 @@ export interface CollabPrintStatusSyncParams {
 export interface CollabDeliveryParams {
   logisticsCompany: string;
   logisticsNo: string;
-  fileIds?: Array<string | number>;
+  fileIds?: CollabFileId[];
   remark?: string;
 }
 
@@ -161,7 +177,7 @@ export function rejectCollabOrder(id: string | number, data: { reason: string })
     data
   });
 }
-export function submitCollabHdReview(id: string | number, data: { fileIds: Array<string | number>; comment?: string }) {
+export function submitCollabHdReview(id: string | number, data: { fileIds: CollabFileId[]; comment?: string }) {
   return request<any>({
     url: `${BASE_URL}/${id}/submit-hd-review`,
     method: 'post',
@@ -183,7 +199,7 @@ export function reviewCollabHd(
   });
 }
 
-export function submitCollabEffectReview(id: string | number, data: { fileIds: Array<string | number>; comment?: string }) {
+export function submitCollabEffectReview(id: string | number, data: { fileIds: CollabFileId[]; comment?: string }) {
   return request<any>({
     url: `${BASE_URL}/${id}/submit-effect-review`,
     method: 'post',
@@ -212,30 +228,18 @@ export function fetchCollabOrderEvents(id: string | number) {
   });
 }
 
-export function syncCollabPrintStatus(
-  id: string | number,
-  data: {
-    printStatus: 'WAIT_PRINT' | 'PRINTING' | 'PRINT_COMPLETED';
-    remark?: string;
-  }
-) {
-  return request<any>({
+
+export function syncCollabPrintStatus(id: string | number, data: CollabPrintStatusSyncParams) {
+  return request({
     url: `${BASE_URL}/${id}/sync-print-status`,
     method: 'post',
     data
   });
 }
 
-export function deliveryCollabOrder(
-  id: string | number,
-  data: {
-    logisticsCompany: string;
-    logisticsNo: string;
-    fileIds?: Array<string | number>;
-    remark?: string;
-  }
-) {
-  return request<any>({
+
+export function deliveryCollabOrder(id: string | number, data: CollabDeliveryParams) {
+  return request({
     url: `${BASE_URL}/${id}/delivery`,
     method: 'post',
     data
@@ -321,3 +325,4 @@ export function sendCollabOrderByStageRoute(data: SendCollabOrderByStageRoutePar
     data
   });
 }
+

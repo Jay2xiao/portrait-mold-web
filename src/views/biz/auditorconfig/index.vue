@@ -182,7 +182,7 @@ const columns = [
     title: '操作',
     key: 'actions',
     width: 180,
-    fixed: 'right',
+    fixed: 'right' as const,
     render(row: AuditorConfigVO) {
       return h(NSpace, {}, {
         default: () => [

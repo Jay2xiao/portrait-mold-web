@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {h, onMounted, reactive, ref, watch} from 'vue';
+import {h, onMounted, reactive, ref, VNodeChild, watch} from 'vue';
 import {
   NButton,
   NCard,
@@ -185,9 +185,9 @@ const columns = [
     title: '操作',
     key: 'actions',
     width: 360,
-    fixed: 'right',
+    fixed: 'right' as const,
     render(row: PrintTaskVO) {
-      const buttons: any[] = [];
+      const buttons: VNodeChild[] = [];
 
       if (row.status === 'WAIT_QC') {
         buttons.push(

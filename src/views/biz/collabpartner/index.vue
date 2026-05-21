@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, h, onMounted, reactive, ref } from 'vue';
+import {computed, h, onMounted, reactive, ref, VNodeChild} from 'vue';
 import {
   NButton,
   NCard,
@@ -346,7 +346,7 @@ const partnerColumns = [
     key: 'actions',
     width: 220,
     render(row: PartnerRow) {
-      const buttons: any[] = [];
+      const buttons: VNodeChild[] = [];
 
       if (row.status === 'PENDING' && row.direction === 'RECEIVED') {
         buttons.push(

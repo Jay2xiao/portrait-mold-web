@@ -171,7 +171,7 @@ function buildPrintHtml() {
     .map((item: any, index: number) => {
       return `
         <tr>
-          <td class="center">${index + 1}</td>
+          <td class="center">${Number(index) + 1}</td>
           <td>${escapeHtml(item.orderNoSnapshot)}</td>
           <td>${escapeHtml(itemTypeLabel(item.itemType))}</td>
           <td>${escapeHtml(item.itemName)}</td>
@@ -601,9 +601,9 @@ function printPdf() {
           cleanup();
         }
       }, 10000);
-    } catch (error) {
+    } catch (error: any) {
       cleanup();
-      message.error('调用浏览器打印失败');
+      message.error(error?.message || '调用浏览器打印失败');
     }
   }, 500);
 }
@@ -617,7 +617,7 @@ function printPdf() {
     @update:show="value => emit('update:show', value)"
   >
     <NDrawerContent title="客户对账单打印预览" closable>
-      <template #header-extra>
+      <template>
         <NSpace>
           <NButton @click="close">关闭</NButton>
           <NButton
@@ -703,7 +703,7 @@ function printPdf() {
 
               <tbody>
               <tr v-for="(item, index) in items" :key="item.id || index">
-                <td class="center">{{ index + 1 }}</td>
+                <td class="center">{{ Number(index) + 1 }}</td>
                 <td>{{ item.orderNoSnapshot || '-' }}</td>
                 <td>{{ itemTypeLabel(item.itemType) }}</td>
                 <td>{{ item.itemName || '-' }}</td>

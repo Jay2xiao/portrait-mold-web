@@ -12,6 +12,7 @@ import {
   NSelect,
   NSpace,
   NStatistic,
+  DataTableColumns,
   NTag,
   useMessage
 } from 'naive-ui';
@@ -185,11 +186,11 @@ const selectedAmount = computed(() => {
   }, 0);
 });
 
-const columns = [
+const columns: DataTableColumns<ReceivableItemVO> = [
   {
-    type: 'selection',
+    type: 'selection' as const,
     width: 50,
-    fixed: 'left',
+    fixed: 'left' as const,
     disabled(row: ReceivableItemVO) {
       return row.billStatus !== 'UNBILLED'
         || row.payStatus === 'PAID'
@@ -200,13 +201,13 @@ const columns = [
     title: '客户',
     key: 'customerNameSnapshot',
     width: 140,
-    fixed: 'left'
+    fixed: 'left' as const
   },
   {
     title: '订单号',
     key: 'orderNoSnapshot',
     width: 170,
-    fixed: 'left'
+    fixed: 'left' as const
   },
   {
     title: '费用类型',

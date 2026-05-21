@@ -147,7 +147,7 @@ const columns = [
     title: '操作时间',
     key: 'operationTime',
     width: 170,
-    fixed: 'left'
+    fixed: 'left' as const
   },
   {
     title: '业务类型',
@@ -212,7 +212,7 @@ const columns = [
     title: '操作',
     key: 'actions',
     width: 90,
-    fixed: 'right',
+    fixed: 'right' as const,
     render(row: BizOperationLogVO) {
       return h(
         NButton,

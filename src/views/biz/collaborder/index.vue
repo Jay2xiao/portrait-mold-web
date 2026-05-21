@@ -1,97 +1,211 @@
 <script setup lang="ts">
-import { computed, h, onMounted, reactive, ref } from 'vue';
-import {useRoute, useRouter} from 'vue-router';
+import { computed, h, onMounted, reactive, ref, watch, type VNodeChild } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import {
+  NAlert,
+  NBadge,
   NButton,
   NCard,
-  NCode,
   NDataTable,
   NDescriptions,
   NDescriptionsItem,
   NDrawer,
   NDrawerContent,
+  NEmpty,
   NForm,
   NFormItem,
-  NImage,
   NInput,
+  NInputNumber,
+  NModal,
   NSelect,
   NSpace,
-  NTag,
-  NTabs,
+  NSpin,
   NTabPane,
-  NModal,
-  useDialog,
+  NTabs,
+  NTag,
   NTimeline,
   NTimelineItem,
-  useMessage
+  useDialog,
+  useMessage,
+  type DataTableColumns,
+  type PaginationProps
 } from 'naive-ui';
+
+import BizFileUpload from '@/views/biz/components/BizFileUpload.vue';
+import BizFileViewer from '@/views/biz/components/BizFileViewer.vue';
+
+import CollabBillingPanel from '@/views/biz/components/CollabBillingPanel.vue';
 
 import {
   acceptCollabOrder,
+  deliveryCollabOrder,
   fetchCollabOrderDetail,
+  fetchCollabOrderEvents,
   fetchReceivedCollabOrders,
   fetchSentCollabOrders,
   rejectCollabOrder,
   reviewCollabEffect,
   reviewCollabHd,
   submitCollabEffectReview,
-  deliveryCollabOrder,
-  fetchCollabOrderEvents,
-  syncCollabPrintStatus,
-  submitCollabHdReview
+  submitCollabHdReview,
+  syncCollabPrintStatus
 } from '@/service/api/biz/collab-order';
 
+import {
+  cancelCollabBill,
+  createCollabBill,
+  fetchCollabBillByOrder,
+  resyncCollabInternalBill,
+  sendCollabBill,
+  type CollabBillVO
+} from '@/service/api/biz/collab-bill';
+
+import {
+  approveCollabPaymentVoucher,
+  fetchCollabPaymentVouchersByBill,
+  rejectCollabPaymentVoucher,
+  resyncCollabPayment,
+  uploadCollabPaymentVoucher,
+  type CollabPaymentVoucherVO
+} from '@/service/api/biz/collab-payment-voucher';
 
 defineOptions({
   name: 'BizCollabOrder'
 });
 
+type CollabId = string | number;
+type RoleType = 'SENT' | 'RECEIVED';
+
+interface CollabOrderRow {
+  id?: CollabId;
+  collabOrderNo?: string;
+  sourceOrderNoSnapshot?: string;
+  sourceCustomerNameSnapshot?: string;
+  senderTenantNameSnapshot?: string;
+  receiverTenantNameSnapshot?: string;
+  serviceType?: string;
+  materialPackageType?: string;
+  senderRepairFeeAmount?: number | string;
+  status?: string;
+  paymentStatus?: string;
+  printStatus?: string;
+  deliveryStatus?: string;
+  internalBillSyncStatus?: string;
+  internalPaymentSyncStatus?: string;
+  collabCostSyncStatus?: string;
+  createTime?: string;
+  [key: string]: any;
+}
+
+interface CollabFileRow {
+  id?: CollabId;
+  fileId?: CollabId;
+  fileType?: string;
+  fileStage?: string;
+  createTime?: string;
+  [key: string]: any;
+}
+
+interface CollabEventRow {
+  id?: CollabId;
+  eventType?: string;
+  eventName?: string;
+  eventContent?: string;
+  content?: string;
+  attachmentsJson?: string;
+  operatorTenantNameSnapshot?: string;
+  operatorUserName?: string;
+  createTime?: string;
+  [key: string]: any;
+}
+
 const router = useRouter();
+const route = useRoute();
 const dialog = useDialog();
 const message = useMessage();
-const route = useRoute();
+
+const activeTab = ref<RoleType>('RECEIVED');
 
 const loadingSent = ref(false);
 const loadingReceived = ref(false);
 const loadingDetail = ref(false);
+const loadingEvents = ref(false);
 
-const sentRows = ref<any[]>([]);
-const receivedRows = ref<any[]>([]);
-const activeTab = ref<'SENT' | 'RECEIVED'>('SENT');
+const sentRows = ref<CollabOrderRow[]>([]);
+const receivedRows = ref<CollabOrderRow[]>([]);
 
 const showDetailDrawer = ref(false);
 const detail = ref<any>(null);
+const eventRows = ref<CollabEventRow[]>([]);
+
+const activeDetailTab = ref('base');
 
 const showRejectModal = ref(false);
-const rejectTarget = ref<any | null>(null);
+const rejectTarget = ref<CollabOrderRow | null>(null);
 
-const isSenderView = computed(() => activeTab.value === 'SENT');
-const isReceiverView = computed(() => activeTab.value === 'RECEIVED');
+const showHdReviewModal = ref(false);
+const showEffectReviewModal = ref(false);
+const showBillCreateModal = ref(false);
+const showBillCancelModal = ref(false);
+const showVoucherUploadModal = ref(false);
+const showVoucherReviewModal = ref(false);
 
-const processedHdFileIds = ref<Array<string | number>>([]);
-const effectFileIds = ref<Array<string | number>>([]);
+const currentReviewVoucher = ref<CollabPaymentVoucherVO | null>(null);
+const voucherReviewMode = ref<'approve' | 'reject'>('approve');
+
+const processedHdFileIds = ref<CollabId[]>([]);
+const effectFileIds = ref<CollabId[]>([]);
+const deliveryFileIds = ref<CollabId[]>([]);
+const voucherFileIds = ref<CollabId[]>([]);
 
 const hdSubmitComment = ref('');
 const effectSubmitComment = ref('');
 
-const rejectStage = ref<'HD' | 'EFFECT' | ''>('');
-const rejectReason = ref('');
+const queryForm = reactive({
+  status: '',
+  serviceType: '',
+  materialPackageType: '',
+  keyword: ''
+});
 
+const sentPagination = reactive<PaginationProps>({
+  page: 1,
+  pageSize: 20,
+  itemCount: 0,
+  showSizePicker: true,
+  pageSizes: [10, 20, 50, 100],
+  prefix({ itemCount }) {
+    return `共 ${itemCount} 条`;
+  }
+});
 
-const hdReviewComment = ref('');
+const receivedPagination = reactive<PaginationProps>({
+  page: 1,
+  pageSize: 20,
+  itemCount: 0,
+  showSizePicker: true,
+  pageSizes: [10, 20, 50, 100],
+  prefix({ itemCount }) {
+    return `共 ${itemCount} 条`;
+  }
+});
 
-const effectReviewComment = ref('');
+const rejectForm = reactive({
+  reason: ''
+});
 
-const showReviewRejectModal = ref(false);
-const reviewRejectStage = ref<'HD' | 'EFFECT' | ''>('');
-const reviewRejectReason = ref('');
+const hdReviewForm = reactive({
+  result: 'APPROVE' as 'APPROVE' | 'REJECT',
+  comment: ''
+});
 
-const eventRows = ref<any[]>([]);
-const loadingEvents = ref(false);
-
+const effectReviewForm = reactive({
+  result: 'APPROVE' as 'APPROVE' | 'REJECT',
+  comment: ''
+});
 
 const printForm = reactive({
-  printStatus: 'PRINTING' as 'WAIT_PRINT' | 'PRINTING' | 'PRINT_COMPLETED',
+  printStatus: 'WAIT_PRINT' as 'WAIT_PRINT' | 'PRINTING' | 'PRINT_COMPLETED',
   remark: ''
 });
 
@@ -101,115 +215,57 @@ const deliveryForm = reactive({
   remark: ''
 });
 
-const deliveryAttachmentFileIds = ref<Array<string | number>>([]);
-
-const printStatusOptions = [
-  { label: '待打印', value: 'WAIT_PRINT' },
-  { label: '打印中', value: 'PRINTING' },
-  { label: '打印完成', value: 'PRINT_COMPLETED' }
-];
-
-function printStatusLabel(value?: string) {
-  const map: Record<string, string> = {
-    NONE: '无',
-    WAIT_PRINT: '待打印',
-    PRINTING: '打印中',
-    PRINT_COMPLETED: '打印完成'
-  };
-
-  return map[value || ''] || value || '-';
-}
-
-function deliveryStatusLabel(value?: string) {
-  const map: Record<string, string> = {
-    NONE: '无',
-    WAIT_DELIVERY: '待发货',
-    DELIVERED: '已发货',
-    RECEIVED: '已签收'
-  };
-
-  return map[value || ''] || value || '-';
-}
-
-
-const syncingPrint = ref(false);
-const submittingDelivery = ref(false);
-
-
-function eventTypeLabel(value?: string) {
-  const map: Record<string, string> = {
-    SEND: '发单',
-    ACCEPT: '接单',
-    REJECT: '拒单',
-
-    HD_SUBMIT: '提交高清图',
-    HD_APPROVE: '高清图通过',
-    HD_REJECT: '高清图驳回',
-
-    EFFECT_SUBMIT: '提交修模效果图',
-    EFFECT_APPROVE: '修模效果图通过',
-    EFFECT_REJECT: '修模效果图驳回',
-
-    PRINT_STATUS_SYNC: '打印状态同步',
-    DELIVERY_SYNC: '发货同步'
-  };
-
-  return map[value || ''] || value || '-';
-}
-
-function timelineItemType(value?: string) {
-  if (!value) return 'default';
-
-  if (value.includes('REJECT')) return 'error';
-  if (value.includes('APPROVE')) return 'success';
-  if (value === 'DELIVERY_SYNC') return 'success';
-  if (value === 'PRINT_STATUS_SYNC') return 'info';
-  if (value === 'ACCEPT') return 'success';
-
-  return 'default';
-}
-
-const canSenderViewPrint = computed(() => {
-  const order = currentOrder.value;
-
-  return (
-    isSenderView.value &&
-    ['PRINTING', 'WAIT_DELIVERY', 'WAIT_BILL', 'DELIVERED', 'BILLED', 'COMPLETED'].includes(order.status || '') &&
-    order.serviceType !== 'REPAIR_ONLY'
-  );
+const billCreateForm = reactive({
+  billAmount: null as number | null,
+  billTitle: '',
+  billRemark: '',
+  itemName: '协作服务费',
+  itemType: 'COLLAB_SERVICE_FEE'
 });
 
-const canSenderViewDelivery = computed(() => {
-  const order = currentOrder.value;
-
-  return (
-    isSenderView.value &&
-    ['WAIT_BILL', 'DELIVERED', 'BILLED', 'VOUCHER_UPLOADED', 'PAID_CONFIRMED', 'COMPLETED'].includes(order.status || '') &&
-    order.deliveryStatus === 'DELIVERED'
-  );
-});
-
-
-const rejectForm = reactive({
+const billCancelForm = reactive({
   reason: ''
 });
 
-const queryForm = reactive({
-  status: '',
-  serviceType: '',
-  materialPackageType: '',
-  keyword: ''
+const voucherUploadForm = reactive({
+  paymentAmount: null as number | null,
+  paymentChannel: 'WECHAT' as 'WECHAT' | 'ALIPAY' | 'BANK' | 'CASH' | 'OTHER',
+  payerName: '',
+  transactionNo: '',
+  remark: ''
 });
+
+const voucherReviewForm = reactive({
+  reviewRemark: ''
+});
+
+const submittingReject = ref(false);
+const submittingHd = ref(false);
+const submittingEffect = ref(false);
+const submittingPrint = ref(false);
+const submittingDelivery = ref(false);
+const submittingBill = ref(false);
+const submittingVoucher = ref(false);
+const submittingReview = ref(false);
 
 const statusOptions = [
   { label: '待接单', value: 'PENDING_ACCEPT' },
   { label: '已接单', value: 'ACCEPTED' },
   { label: '已拒单', value: 'REJECTED' },
+  { label: '已取消', value: 'CANCELLED' },
+  { label: '高清图处理中', value: 'MATERIAL_PROCESSING' },
+  { label: '待高清图确认', value: 'WAIT_HD_REVIEW' },
+  { label: '高清图驳回', value: 'HD_REJECTED' },
   { label: '修模中', value: 'REPAIRING' },
   { label: '待发单方审核', value: 'WAIT_SENDER_REVIEW' },
+  { label: '修模效果图驳回', value: 'SENDER_REJECTED' },
   { label: '打印中', value: 'PRINTING' },
   { label: '待发货', value: 'WAIT_DELIVERY' },
   { label: '已发货', value: 'DELIVERED' },
+  { label: '待出账', value: 'WAIT_BILL' },
+  { label: '已出账', value: 'BILLED' },
+  { label: '已上传凭证', value: 'VOUCHER_UPLOADED' },
+  { label: '已确认收款', value: 'PAID_CONFIRMED' },
   { label: '已完成', value: 'COMPLETED' }
 ];
 
@@ -225,164 +281,223 @@ const materialTypeOptions = [
   { label: '高清照片 + AI模型', value: 'HD_PHOTO_AI_MODEL' }
 ];
 
-function unwrapData<T = any>(res: any): T {
-  return res?.data ?? res;
-}
+const printStatusOptions = [
+  { label: '待打印', value: 'WAIT_PRINT' },
+  { label: '打印中', value: 'PRINTING' },
+  { label: '打印完成', value: 'PRINT_COMPLETED' }
+];
 
+const paymentChannelOptions = [
+  { label: '微信', value: 'WECHAT' },
+  { label: '支付宝', value: 'ALIPAY' },
+  { label: '银行转账', value: 'BANK' },
+  { label: '现金', value: 'CASH' },
+  { label: '其他', value: 'OTHER' }
+];
 
-function materialLabel(value?: string) {
-  return materialTypeOptions.find(item => item.value === value)?.label || value || '-';
-}
+const billItemTypeOptions = [
+  { label: '协作服务费', value: 'COLLAB_SERVICE_FEE' },
+  { label: '修模费', value: 'REPAIR_FEE' },
+  { label: '打印费', value: 'PRINT_FEE' },
+  { label: '发货费', value: 'DELIVERY_FEE' },
+  { label: '其他费用', value: 'OTHER_FEE' }
+];
 
-function serviceLabel(value?: string) {
-  return serviceTypeOptions.find(item => item.value === value)?.label || value || '-';
-}
+const imageAccept = 'image/*';
+const modelAccept = '.stl,.obj,.3mf,.zip,.rar,.7z,.step,.stp';
 
-function statusLabel(value?: string) {
-  const map: Record<string, string> = {
-    PENDING_ACCEPT: '待接单',
-    ACCEPTED: '已接单',
-    REJECTED: '已拒单',
-    CANCELLED: '已取消',
+const currentRole = computed<RoleType>(() => activeTab.value);
+const isSentRole = computed(() => currentRole.value === 'SENT');
+const isReceivedRole = computed(() => currentRole.value === 'RECEIVED');
 
-    MATERIAL_PROCESSING: '高清图处理中',
-    WAIT_HD_REVIEW: '待高清图确认',
-    HD_REJECTED: '高清图驳回',
+const currentOrder = computed<CollabOrderRow>(() => detail.value?.order || {});
+const currentBill = computed<CollabBillVO | null>(() => detail.value?.bill || null);
+const paymentVouchers = computed<CollabPaymentVoucherVO[]>(() =>
+  Array.isArray(detail.value?.paymentVouchers) ? detail.value.paymentVouchers : []
+);
+const currentFiles = computed<CollabFileRow[]>(() => (Array.isArray(detail.value?.files) ? detail.value.files : []));
 
-    REPAIRING: '修模中',
-    WAIT_SENDER_REVIEW: '待发单方审核',
-    SENDER_REJECTED: '修模效果图驳回',
+const currentOrderId = computed(() => currentOrder.value?.id);
+const orderStatus = computed(() => currentOrder.value?.status || '');
+const paymentStatus = computed(() => currentOrder.value?.paymentStatus || '');
 
-    PRINTING: '打印中',
-    WAIT_DELIVERY: '待发货',
-    DELIVERED: '已发货',
+const billItems = computed(() => parseBillItems(currentBill.value?.billItemsJson || ''));
 
-    WAIT_BILL: '待出账',
-    BILLED: '已出账',
-    VOUCHER_UPLOADED: '已上传凭证',
-    PAID_CONFIRMED: '已确认收款',
+const canAcceptOrReject = computed(() => isReceivedRole.value && orderStatus.value === 'PENDING_ACCEPT');
 
-    COMPLETED: '已完成'
-  };
-
-  return map[value || ''] || value || '-';
-}
-
-
-
-function statusTagType(value?: string) {
-  if (['COMPLETED', 'PAID_CONFIRMED', 'DELIVERED', 'ACCEPTED'].includes(value || '')) return 'success';
-  if (['REJECTED', 'CANCELLED', 'HD_REJECTED', 'SENDER_REJECTED'].includes(value || '')) return 'error';
-  if (['PENDING_ACCEPT', 'WAIT_SENDER_REVIEW', 'WAIT_HD_REVIEW', 'WAIT_DELIVERY'].includes(value || '')) return 'warning';
-  return 'info';
-}
-
-const canReceiverSyncPrint = computed(() => {
-  const order = currentOrder.value;
-
+const canSubmitHd = computed(() => {
   return (
-    isReceiverView.value &&
-    order.status === 'PRINTING' &&
-    order.serviceType !== 'REPAIR_ONLY'
+    isReceivedRole.value &&
+    currentOrder.value?.materialPackageType === 'RAW_PHOTO' &&
+    ['ACCEPTED', 'MATERIAL_PROCESSING', 'HD_REJECTED'].includes(orderStatus.value)
   );
 });
 
-const canViewPrintInfo = computed(() => {
-  const order = currentOrder.value;
+const canReviewHd = computed(() => {
+  return isSentRole.value && orderStatus.value === 'WAIT_HD_REVIEW';
+});
 
+const canSubmitEffect = computed(() => {
   return (
-    order.serviceType !== 'REPAIR_ONLY' &&
-    order.printStatus &&
-    order.printStatus !== 'NONE'
+    isReceivedRole.value &&
+    currentOrder.value?.serviceType !== 'PRINT_ONLY' &&
+    ['REPAIRING', 'SENDER_REJECTED'].includes(orderStatus.value)
   );
 });
 
-const canReceiverDelivery = computed(() => {
-  const order = currentOrder.value;
-
-  return (
-    isReceiverView.value &&
-    order.status === 'WAIT_DELIVERY' &&
-    order.printStatus === 'PRINT_COMPLETED'
-  );
-});
-
-const canViewDeliveryInfo = computed(() => {
-  const order = currentOrder.value;
-
-  return order.deliveryStatus === 'DELIVERED';
-});
-
-function initV14ActionForms() {
-  const order = detail.value?.order || {};
-
-  if (order.printStatus && order.printStatus !== 'NONE') {
-    printForm.printStatus = order.printStatus;
-  } else {
-    printForm.printStatus = 'WAIT_PRINT';
+function normalizePrintStatus(value?: string): 'WAIT_PRINT' | 'PRINTING' | 'PRINT_COMPLETED' {
+  if (value === 'WAIT_PRINT' || value === 'PRINTING' || value === 'PRINT_COMPLETED') {
+    return value;
   }
 
-  printForm.remark = '';
-
-  deliveryForm.logisticsCompany = order.logisticsCompany || '';
-  deliveryForm.logisticsNo = order.logisticsNo || '';
-  deliveryForm.remark = '';
-
-  deliveryAttachmentFileIds.value = [];
+  return 'WAIT_PRINT';
 }
 
-const columns = [
+
+const canReviewEffect = computed(() => {
+  return isSentRole.value && orderStatus.value === 'WAIT_SENDER_REVIEW';
+});
+
+const canSyncPrint = computed(() => {
+  return isReceivedRole.value && orderStatus.value === 'PRINTING' && currentOrder.value?.serviceType !== 'REPAIR_ONLY';
+});
+
+const canDelivery = computed(() => {
+  return isReceivedRole.value && orderStatus.value === 'WAIT_DELIVERY' && currentOrder.value?.printStatus === 'PRINT_COMPLETED';
+});
+
+const canCreateBill = computed(() => {
+  return isReceivedRole.value && orderStatus.value === 'WAIT_BILL' && !currentBill.value;
+});
+
+const canSendBill = computed(() => {
+  return isReceivedRole.value && currentBill.value?.billStatus === 'DRAFT';
+});
+
+const canCancelBill = computed(() => {
+  if (!isReceivedRole.value || !currentBill.value) return false;
+  if (!['DRAFT', 'SENT'].includes(String(currentBill.value.billStatus))) return false;
+  if (currentBill.value.payStatus === 'PAID') return false;
+  return ['WAIT_BILL', 'BILLED'].includes(orderStatus.value);
+});
+
+const canUploadVoucher = computed(() => {
+  if (!isSentRole.value || !currentBill.value) return false;
+  if (currentBill.value.billStatus !== 'SENT') return false;
+  if (currentBill.value.payStatus !== 'UNPAID') return false;
+  return orderStatus.value === 'BILLED' || paymentStatus.value === 'VOUCHER_REJECTED';
+});
+
+const canResyncBill = computed(() => {
+  return isReceivedRole.value && currentBill.value?.internalBillSyncStatus === 'FAILED';
+});
+
+const syncFailedCount = computed(() => {
+  let count = 0;
+
+  if (currentBill.value?.internalBillSyncStatus === 'FAILED') count += 1;
+
+  paymentVouchers.value.forEach(item => {
+    if (item.internalPaymentSyncStatus === 'FAILED') count += 1;
+    if (item.collabCostSyncStatus === 'FAILED') count += 1;
+  });
+
+  return count;
+});
+
+const baseColumns: DataTableColumns<CollabOrderRow> = [
   {
     title: '协作单号',
     key: 'collabOrderNo',
-    width: 180
+    width: 180,
+    fixed: 'left' as const
   },
   {
     title: '源订单号',
     key: 'sourceOrderNoSnapshot',
-    width: 160
+    width: 160,
+    render(row) {
+      return row.sourceOrderNoSnapshot || '-';
+    }
   },
   {
-    title: '对方商家',
-    key: 'partnerTenantNameSnapshot',
-    width: 180,
-    render(row: any) {
-      return activeTab.value === 'SENT'
-        ? row.receiverTenantNameSnapshot || '-'
-        : row.senderTenantNameSnapshot || '-';
+    title: '客户',
+    key: 'sourceCustomerNameSnapshot',
+    width: 150,
+    render(row) {
+      return row.sourceCustomerNameSnapshot || '-';
+    }
+  },
+  {
+    title: '发单方',
+    key: 'senderTenantNameSnapshot',
+    width: 160,
+    render(row) {
+      return row.senderTenantNameSnapshot || '-';
+    }
+  },
+  {
+    title: '接单方',
+    key: 'receiverTenantNameSnapshot',
+    width: 160,
+    render(row) {
+      return row.receiverTenantNameSnapshot || '-';
     }
   },
   {
     title: '服务类型',
     key: 'serviceType',
     width: 120,
-    render(row: any) {
-      return serviceLabel(row.serviceType);
+    render(row) {
+      return serviceTypeText(row.serviceType);
     }
   },
   {
     title: '资料类型',
     key: 'materialPackageType',
-    width: 150,
-    render(row: any) {
-      return materialLabel(row.materialPackageType);
+    width: 160,
+    render(row) {
+      return materialTypeText(row.materialPackageType);
     }
   },
   {
-    title: '约定修模费用',
+    title: '费用',
     key: 'senderRepairFeeAmount',
-    width: 130
+    width: 120,
+    render(row) {
+      return money(row.senderRepairFeeAmount);
+    }
   },
   {
-    title: '状态',
+    title: '协作状态',
     key: 'status',
-    width: 120,
-    render(row: any) {
+    width: 140,
+    render(row) {
       return h(
         NTag,
         { type: statusTagType(row.status) as any },
-        { default: () => statusLabel(row.status) }
+        { default: () => statusText(row.status) }
       );
+    }
+  },
+  {
+    title: '付款状态',
+    key: 'paymentStatus',
+    width: 140,
+    render(row) {
+      return h(
+        NTag,
+        { type: paymentStatusTagType(row.paymentStatus) as any },
+        { default: () => paymentStatusText(row.paymentStatus) }
+      );
+    }
+  },
+  {
+    title: '账务同步',
+    key: 'accountingSync',
+    width: 260,
+    render(row) {
+      return renderAccountingSync(row);
     }
   },
   {
@@ -394,20 +509,21 @@ const columns = [
     title: '操作',
     key: 'actions',
     width: 220,
-    render(row: any) {
-      const btns: any[] = [
+    fixed: 'right' as const,
+    render(row) {
+      const buttons = [
         h(
           NButton,
           {
             size: 'small',
-            onClick: () => openDetail(row)
+            onClick: () => openDetail(row, activeTab.value)
           },
           { default: () => '详情' }
         )
       ];
 
       if (activeTab.value === 'RECEIVED' && row.status === 'PENDING_ACCEPT') {
-        btns.push(
+        buttons.push(
           h(
             NButton,
             {
@@ -422,6 +538,7 @@ const columns = [
             {
               size: 'small',
               type: 'error',
+              ghost: true,
               onClick: () => openRejectModal(row)
             },
             { default: () => '拒单' }
@@ -429,32 +546,251 @@ const columns = [
         );
       }
 
-      return h(NSpace, { size: 8 }, { default: () => btns });
+      return h(NSpace, { size: 8 }, { default: () => buttons });
     }
   }
 ];
 
-async function loadSent() {
-  loadingSent.value = true;
-  try {
-    const res = await fetchSentCollabOrders(queryForm);
-    sentRows.value = unwrapData(res)?.rows || [];
-  } finally {
-    loadingSent.value = false;
+const fileColumns: DataTableColumns<CollabFileRow> = [
+  {
+    title: '文件类型',
+    key: 'fileType',
+    width: 160,
+    render(row) {
+      return fileTypeText(row.fileType);
+    }
+  },
+  {
+    title: '文件ID',
+    key: 'fileId',
+    width: 120,
+    render(row) {
+      return row.fileId || '-';
+    }
+  },
+  {
+    title: '预览',
+    key: 'viewer',
+    minWidth: 180,
+    render(row) {
+      return row.fileId
+        ? h(BizFileViewer, {
+          fileIds: [row.fileId],
+          mode: isImageFileType(row.fileType) ? 'image' : 'download',
+          max: 1,
+          thumbSize: 60,
+          showName: true
+        })
+        : '-';
+    }
+  },
+  {
+    title: '创建时间',
+    key: 'createTime',
+    width: 170
+  }
+];
+
+const billItemColumns: DataTableColumns<any> = [
+  {
+    title: '项目名称',
+    key: 'itemName',
+    minWidth: 160,
+    render(row) {
+      return row.itemName || '-';
+    }
+  },
+  {
+    title: '项目类型',
+    key: 'itemType',
+    width: 140,
+    render(row) {
+      return billItemTypeText(row.itemType);
+    }
+  },
+  {
+    title: '金额',
+    key: 'amount',
+    width: 120,
+    render(row) {
+      return money(row.amount);
+    }
+  },
+  {
+    title: '备注',
+    key: 'remark',
+    minWidth: 180,
+    render(row) {
+      return row.remark || '-';
+    }
+  }
+];
+
+const voucherColumns: DataTableColumns<CollabPaymentVoucherVO> = [
+  {
+    title: '凭证号',
+    key: 'voucherNo',
+    minWidth: 160
+  },
+  {
+    title: '付款金额',
+    key: 'paymentAmount',
+    width: 120,
+    render(row) {
+      return money(row.paymentAmount);
+    }
+  },
+  {
+    title: '付款渠道',
+    key: 'paymentChannel',
+    width: 110,
+    render(row) {
+      return paymentChannelText(row.paymentChannel);
+    }
+  },
+  {
+    title: '凭证文件',
+    key: 'proofFileIds',
+    minWidth: 220,
+    render(row) {
+      const ids = parseProofFileIds(row.proofFileIds);
+      return ids.length
+        ? h(BizFileViewer, {
+          fileIds: ids,
+          mode: 'auto',
+          max: 4,
+          thumbSize: 54,
+          showName: true
+        })
+        : '-';
+    }
+  },
+  {
+    title: '审核状态',
+    key: 'reviewStatus',
+    width: 110,
+    render(row) {
+      return h(
+        NTag,
+        { type: reviewStatusTagType(row.reviewStatus) as any },
+        { default: () => reviewStatusText(row.reviewStatus) }
+      );
+    }
+  },
+  {
+    title: '内部收款',
+    key: 'internalPaymentSyncStatus',
+    width: 140,
+    render(row) {
+      return renderSyncStatus(row.internalPaymentSyncStatus, row.internalPaymentSyncError);
+    }
+  },
+  {
+    title: '外协成本',
+    key: 'collabCostSyncStatus',
+    width: 140,
+    render(row) {
+      return renderSyncStatus(row.collabCostSyncStatus, row.collabCostSyncError);
+    }
+  },
+  {
+    title: '操作',
+    key: 'actions',
+    width: 220,
+    fixed: 'right' as const,
+    render(row) {
+      const buttons: VNodeChild[] = [];
+
+      if (isReceivedRole.value && row.reviewStatus === 'PENDING' && orderStatus.value === 'VOUCHER_UPLOADED') {
+        buttons.push(
+          h(
+            NButton,
+            {
+              size: 'small',
+              type: 'success',
+              ghost: true,
+              onClick: () => openVoucherReviewModal(row, 'approve')
+            },
+            { default: () => '通过' }
+          ),
+          h(
+            NButton,
+            {
+              size: 'small',
+              type: 'error',
+              ghost: true,
+              onClick: () => openVoucherReviewModal(row, 'reject')
+            },
+            { default: () => '驳回' }
+          )
+        );
+      }
+
+      if (
+        isReceivedRole.value &&
+        row.reviewStatus === 'APPROVED' &&
+        (row.internalPaymentSyncStatus === 'FAILED' || row.collabCostSyncStatus === 'FAILED')
+      ) {
+        buttons.push(
+          h(
+            NButton,
+            {
+              size: 'small',
+              type: 'warning',
+              ghost: true,
+              onClick: () => confirmResyncPayment(row)
+            },
+            { default: () => '重试同步' }
+          )
+        );
+      }
+
+      return buttons.length ? h(NSpace, { size: 8 }, { default: () => buttons }) : '-';
+    }
+  }
+];
+
+onMounted(async () => {
+  applyRouteQuery();
+  await loadCurrentTab();
+
+  const collabOrderId = route.query.collabOrderId as string | undefined;
+  if (collabOrderId) {
+    await openDetailById(collabOrderId, activeTab.value);
+  }
+});
+
+watch(
+  () => route.query,
+  async () => {
+    applyRouteQuery();
+    await loadCurrentTab();
+
+    const collabOrderId = route.query.collabOrderId as string | undefined;
+    if (collabOrderId) {
+      await openDetailById(collabOrderId, activeTab.value);
+    }
+  }
+);
+
+function applyRouteQuery() {
+  const tab = String(route.query.tab || '').toUpperCase();
+  if (tab === 'SENT' || tab === 'RECEIVED') {
+    activeTab.value = tab;
+  }
+
+  const status = route.query.status;
+  if (typeof status === 'string') {
+    queryForm.status = status;
   }
 }
 
-async function loadReceived() {
-  loadingReceived.value = true;
-  try {
-    const res = await fetchReceivedCollabOrders(queryForm);
-    receivedRows.value = unwrapData(res)?.rows || [];
-  } finally {
-    loadingReceived.value = false;
-  }
+async function handleTabChange(value: string | number) {
+  activeTab.value = value as RoleType;
+  await loadCurrentTab();
 }
 
-async function refreshCurrentTab() {
+async function loadCurrentTab() {
   if (activeTab.value === 'SENT') {
     await loadSent();
   } else {
@@ -462,303 +798,414 @@ async function refreshCurrentTab() {
   }
 }
 
-function search() {
-  refreshCurrentTab();
+async function loadSent() {
+  loadingSent.value = true;
+
+  try {
+    const res = await fetchSentCollabOrders({
+      ...queryForm,
+      pageNum: sentPagination.page,
+      pageSize: sentPagination.pageSize
+    });
+
+    const table = unwrapTable(res);
+    sentRows.value = table.rows;
+    sentPagination.itemCount = table.total;
+  } finally {
+    loadingSent.value = false;
+  }
 }
 
-function reset() {
+async function loadReceived() {
+  loadingReceived.value = true;
+
+  try {
+    const res = await fetchReceivedCollabOrders({
+      ...queryForm,
+      pageNum: receivedPagination.page,
+      pageSize: receivedPagination.pageSize
+    });
+
+    const table = unwrapTable(res);
+    receivedRows.value = table.rows;
+    receivedPagination.itemCount = table.total;
+  } finally {
+    loadingReceived.value = false;
+  }
+}
+
+async function search() {
+  sentPagination.page = 1;
+  receivedPagination.page = 1;
+  await loadCurrentTab();
+}
+
+async function reset() {
   queryForm.status = '';
   queryForm.serviceType = '';
   queryForm.materialPackageType = '';
   queryForm.keyword = '';
-  refreshCurrentTab();
+  sentPagination.page = 1;
+  receivedPagination.page = 1;
+  await loadCurrentTab();
 }
 
-function detailFileIds(fileType: string) {
-  const files = detail.value?.files || [];
-
-  return files
-    .filter((item: any) => item.fileType === fileType && item.fileId)
-    .map((item: any) => item.fileId);
+async function handleSentPageChange(page: number) {
+  sentPagination.page = page;
+  await loadSent();
 }
 
-async function reloadDetail() {
-  const id = detail.value?.order?.id;
-
-  if (!id) {
-    return;
-  }
-
-  const res = await fetchCollabOrderDetail(id);
-  detail.value = unwrapData(res);
-
-  initV14ActionForms();
-
-  await loadEvents(id);
+async function handleSentPageSizeChange(pageSize: number) {
+  sentPagination.pageSize = pageSize;
+  sentPagination.page = 1;
+  await loadSent();
 }
 
-
-async function submitHdReview() {
-  const order = currentOrder.value;
-
-  if (!order.id) return;
-
-  if (!processedHdFileIds.value.length) {
-    message.warning('请先上传处理后的高清图');
-    return;
-  }
-
-  await submitCollabHdReview(order.id, {
-    fileIds: processedHdFileIds.value,
-    comment: hdSubmitComment.value
-  });
-
-  message.success('高清图已提交给发单方确认');
-
-  processedHdFileIds.value = [];
-  hdSubmitComment.value = '';
-
-  await reloadDetail();
-  await refreshCurrentTab();
+async function handleReceivedPageChange(page: number) {
+  receivedPagination.page = page;
+  await loadReceived();
 }
 
-async function approveHdReview() {
-  const order = currentOrder.value;
-
-  if (!order.id) return;
-
-  await reviewCollabHd(order.id, {
-    result: 'APPROVE',
-    comment: hdReviewComment.value
-  });
-
-  message.success('高清图确认通过');
-
-  hdReviewComment.value = '';
-
-  await reloadDetail();
-  await refreshCurrentTab();
+async function handleReceivedPageSizeChange(pageSize: number) {
+  receivedPagination.pageSize = pageSize;
+  receivedPagination.page = 1;
+  await loadReceived();
 }
 
-async function submitEffectReview() {
-  const order = currentOrder.value;
-
-  if (!order.id) return;
-
-  if (!effectFileIds.value.length) {
-    message.warning('请先上传修模效果图');
-    return;
-  }
-
-  await submitCollabEffectReview(order.id, {
-    fileIds: effectFileIds.value,
-    comment: effectSubmitComment.value
-  });
-
-  message.success('修模效果图已提交给发单方审核');
-
-  effectFileIds.value = [];
-  effectSubmitComment.value = '';
-
-  await reloadDetail();
-  await refreshCurrentTab();
+async function openDetail(row: CollabOrderRow, role: RoleType) {
+  if (!row.id) return;
+  await openDetailById(row.id, role);
 }
 
-async function approveEffectReview() {
-  const order = currentOrder.value;
-
-  if (!order.id) return;
-
-  await reviewCollabEffect(order.id, {
-    result: 'APPROVE',
-    comment: effectReviewComment.value
-  });
-
-  message.success('修模效果图审核通过');
-
-  effectReviewComment.value = '';
-
-  await reloadDetail();
-  await refreshCurrentTab();
-}
-
-function openReviewReject(stage: 'HD' | 'EFFECT') {
-  reviewRejectStage.value = stage;
-  reviewRejectReason.value = '';
-  showReviewRejectModal.value = true;
-}
-
-async function submitReviewReject() {
-  const order = currentOrder.value;
-
-  if (!order.id) return;
-
-  if (!reviewRejectReason.value) {
-    message.warning('请输入驳回原因');
-    return;
-  }
-
-  if (reviewRejectStage.value === 'HD') {
-    await reviewCollabHd(order.id, {
-      result: 'REJECT',
-      comment: reviewRejectReason.value
-    });
-
-    message.success('已驳回高清图');
-  }
-
-  if (reviewRejectStage.value === 'EFFECT') {
-    await reviewCollabEffect(order.id, {
-      result: 'REJECT',
-      comment: reviewRejectReason.value
-    });
-
-    message.success('已驳回修模效果图');
-  }
-
-  showReviewRejectModal.value = false;
-  reviewRejectStage.value = '';
-  reviewRejectReason.value = '';
-
-  await reloadDetail();
-  await refreshCurrentTab();
-}
-
-async function openDetail(row: any) {
-  if (!row?.id) return;
-
+async function openDetailById(id: CollabId, role: RoleType) {
+  activeTab.value = role;
   showDetailDrawer.value = true;
+  activeDetailTab.value = 'base';
   loadingDetail.value = true;
   detail.value = null;
   eventRows.value = [];
-  processedHdFileIds.value = [];
-  effectFileIds.value = [];
 
-
-  try {
-    const res = await fetchCollabOrderDetail(row.id);
-    detail.value = unwrapData(res);
-
-    initV14ActionForms();
-
-    await loadEvents(row.id);
-  } finally {
-    loadingDetail.value = false;
-  }
-}
-
-async function openDetailById(id: string | number) {
-  if (!id) return;
-
-  showDetailDrawer.value = true;
-  loadingDetail.value = true;
-  detail.value = null;
-  eventRows.value = [];
+  resetActionForms();
 
   try {
     const res = await fetchCollabOrderDetail(id);
-    detail.value = unwrapData(res);
+    const data = unwrapData<any>(res) || {};
 
-    initV14ActionForms();
+    detail.value = {
+      ...data,
+      bill: data.bill || null,
+      paymentVouchers: Array.isArray(data.paymentVouchers) ? data.paymentVouchers : []
+    };
 
+    await syncBillingData(id);
     await loadEvents(id);
+    initActionForms();
   } finally {
     loadingDetail.value = false;
   }
 }
 
+async function handleBillingRefresh() {
+  await reloadDetail(true);
+}
+
+
+async function reloadDetail(refreshList = true) {
+  const id = currentOrderId.value;
+  if (!id) return;
+
+  const res = await fetchCollabOrderDetail(id);
+  const data = unwrapData<any>(res) || {};
+
+  detail.value = {
+    ...data,
+    bill: data.bill || null,
+    paymentVouchers: Array.isArray(data.paymentVouchers) ? data.paymentVouchers : []
+  };
+
+  await syncBillingData(id);
+  await loadEvents(id);
+  initActionForms();
+
+  if (refreshList) {
+    await loadCurrentTab();
+  }
+}
+
+async function syncBillingData(orderId: CollabId) {
+  try {
+    const billRes = await fetchCollabBillByOrder(orderId);
+    const bill = unwrapData<CollabBillVO | null>(billRes);
+    detail.value.bill = bill || null;
+
+    if (bill?.id) {
+      const voucherRes = await fetchCollabPaymentVouchersByBill(bill.id);
+      detail.value.paymentVouchers = unwrapData<CollabPaymentVoucherVO[]>(voucherRes) || [];
+    } else {
+      detail.value.paymentVouchers = [];
+    }
+  } catch {
+    detail.value.bill = detail.value.bill || null;
+    detail.value.paymentVouchers = detail.value.paymentVouchers || [];
+  }
+}
+
+async function loadEvents(id: CollabId) {
+  loadingEvents.value = true;
+
+  try {
+    const res = await fetchCollabOrderEvents(id);
+    eventRows.value = unwrapData<CollabEventRow[]>(res) || [];
+  } finally {
+    loadingEvents.value = false;
+  }
+}
+
+function resetActionForms() {
+  processedHdFileIds.value = [];
+  effectFileIds.value = [];
+  deliveryFileIds.value = [];
+  voucherFileIds.value = [];
+
+  hdSubmitComment.value = '';
+  effectSubmitComment.value = '';
+
+  printForm.printStatus = 'WAIT_PRINT';
+  printForm.remark = '';
+
+  deliveryForm.logisticsCompany = '';
+  deliveryForm.logisticsNo = '';
+  deliveryForm.remark = '';
+
+  billCreateForm.billAmount = null;
+  billCreateForm.billTitle = '';
+  billCreateForm.billRemark = '';
+  billCreateForm.itemName = '协作服务费';
+  billCreateForm.itemType = 'COLLAB_SERVICE_FEE';
+
+  voucherUploadForm.paymentAmount = null;
+  voucherUploadForm.paymentChannel = 'WECHAT';
+  voucherUploadForm.payerName = '';
+  voucherUploadForm.transactionNo = '';
+  voucherUploadForm.remark = '';
+}
 
 function initActionForms() {
-  const order = detail.value?.order || {};
-
-  printForm.printStatus =
-    order.printStatus && order.printStatus !== 'NONE'
-      ? order.printStatus
-      : 'PRINTING';
-
-  printForm.remark = '';
+  const order = currentOrder.value;
+  printForm.printStatus = normalizePrintStatus(order.printStatus);
 
   deliveryForm.logisticsCompany = order.logisticsCompany || '';
   deliveryForm.logisticsNo = order.logisticsNo || '';
-  deliveryForm.remark = '';
 
-  deliveryAttachmentFileIds.value = [];
+  if (currentBill.value) {
+    const amount = Number(currentBill.value.unpaidAmount || currentBill.value.billAmount || 0);
+    voucherUploadForm.paymentAmount = amount > 0 ? Number(amount.toFixed(2)) : null;
+  }
 }
 
-async function submitPrintStatus() {
-  const order = currentOrder.value;
+function handleAccept(row: CollabOrderRow) {
+  if (!row.id) return;
 
-  if (!order.id) return;
+  dialog.warning({
+    title: '确认接单',
+    content: `确认接收协作单 ${row.collabOrderNo || ''} 吗？`,
+    positiveText: '接单',
+    negativeText: '取消',
+    onPositiveClick: async () => {
+      await acceptCollabOrder(row.id!);
+      message.success('接单成功');
+      await loadReceived();
+    }
+  });
+}
 
-  if (!printForm.printStatus) {
-    message.warning('请选择打印状态');
+function openRejectModal(row: CollabOrderRow) {
+  rejectTarget.value = row;
+  rejectForm.reason = '';
+  showRejectModal.value = true;
+}
+
+async function submitReject() {
+  if (!rejectTarget.value?.id) return;
+
+  if (!rejectForm.reason.trim()) {
+    message.warning('请输入拒单原因');
     return;
   }
 
+  submittingReject.value = true;
+
+  try {
+    await rejectCollabOrder(rejectTarget.value.id, {
+      reason: rejectForm.reason.trim()
+    });
+    message.success('已拒单');
+    showRejectModal.value = false;
+    await loadReceived();
+  } finally {
+    submittingReject.value = false;
+  }
+}
+
+async function submitHdReview() {
+  if (!currentOrderId.value) return;
+
+  if (!processedHdFileIds.value.length) {
+    message.warning('请上传处理后的高清图');
+    return;
+  }
+
+  submittingHd.value = true;
+
+  try {
+    await submitCollabHdReview(currentOrderId.value, {
+      fileIds: processedHdFileIds.value,
+      comment: hdSubmitComment.value
+    });
+
+    message.success('高清图已提交给发单方确认');
+    processedHdFileIds.value = [];
+    hdSubmitComment.value = '';
+    await reloadDetail();
+  } finally {
+    submittingHd.value = false;
+  }
+}
+
+function openHdReviewModal(result: 'APPROVE' | 'REJECT') {
+  hdReviewForm.result = result;
+  hdReviewForm.comment = '';
+  showHdReviewModal.value = true;
+}
+
+async function submitHdReviewResult() {
+  if (!currentOrderId.value) return;
+
+  submittingReview.value = true;
+
+  try {
+    await reviewCollabHd(currentOrderId.value, {
+      result: hdReviewForm.result,
+      comment: hdReviewForm.comment
+    });
+
+    message.success(hdReviewForm.result === 'APPROVE' ? '高清图已确认通过' : '高清图已驳回');
+    showHdReviewModal.value = false;
+    await reloadDetail();
+  } finally {
+    submittingReview.value = false;
+  }
+}
+
+async function submitEffectReview() {
+  if (!currentOrderId.value) return;
+
+  if (!effectFileIds.value.length) {
+    message.warning('请上传修模效果图');
+    return;
+  }
+
+  submittingEffect.value = true;
+
+  try {
+    await submitCollabEffectReview(currentOrderId.value, {
+      fileIds: effectFileIds.value,
+      comment: effectSubmitComment.value
+    });
+
+    message.success('修模效果图已提交给发单方审核');
+    effectFileIds.value = [];
+    effectSubmitComment.value = '';
+    await reloadDetail();
+  } finally {
+    submittingEffect.value = false;
+  }
+}
+
+function openEffectReviewModal(result: 'APPROVE' | 'REJECT') {
+  effectReviewForm.result = result;
+  effectReviewForm.comment = '';
+  showEffectReviewModal.value = true;
+}
+
+async function submitEffectReviewResult() {
+  if (!currentOrderId.value) return;
+
+  submittingReview.value = true;
+
+  try {
+    await reviewCollabEffect(currentOrderId.value, {
+      result: effectReviewForm.result,
+      comment: effectReviewForm.comment
+    });
+
+    message.success(effectReviewForm.result === 'APPROVE' ? '效果图已审核通过' : '效果图已驳回');
+    showEffectReviewModal.value = false;
+    await reloadDetail();
+  } finally {
+    submittingReview.value = false;
+  }
+}
+
+async function submitPrintStatus() {
+  if (!currentOrderId.value) return;
+
   dialog.warning({
-    title: '确认同步打印状态',
-    content: `确定将打印状态同步为「${printStatusLabel(printForm.printStatus)}」吗？`,
-    positiveText: '确认同步',
+    title: '同步打印状态',
+    content: `确认同步为「${printStatusText(printForm.printStatus)}」吗？`,
+    positiveText: '确认',
     negativeText: '取消',
     onPositiveClick: async () => {
-      syncingPrint.value = true;
+      submittingPrint.value = true;
 
       try {
-        await syncCollabPrintStatus(order.id, {
+        await syncCollabPrintStatus(currentOrderId.value!, {
           printStatus: printForm.printStatus,
           remark: printForm.remark
         });
 
         message.success('打印状态已同步');
-
         await reloadDetail();
-        await refreshCurrentTab();
       } finally {
-        syncingPrint.value = false;
+        submittingPrint.value = false;
       }
     }
   });
 }
 
-
 async function submitDelivery() {
-  const order = currentOrder.value;
+  if (!currentOrderId.value) return;
 
-  if (!order.id) return;
-
-  if (!deliveryForm.logisticsCompany) {
+  if (!deliveryForm.logisticsCompany.trim()) {
     message.warning('请输入物流公司');
     return;
   }
 
-  if (!deliveryForm.logisticsNo) {
+  if (!deliveryForm.logisticsNo.trim()) {
     message.warning('请输入物流单号');
     return;
   }
 
   dialog.warning({
     title: '确认发货',
-    content: `确定同步发货信息吗？物流公司：${deliveryForm.logisticsCompany}，物流单号：${deliveryForm.logisticsNo}`,
+    content: `确认同步发货信息？物流公司：${deliveryForm.logisticsCompany}，物流单号：${deliveryForm.logisticsNo}`,
     positiveText: '确认发货',
     negativeText: '取消',
     onPositiveClick: async () => {
       submittingDelivery.value = true;
 
       try {
-        await deliveryCollabOrder(order.id, {
+        await deliveryCollabOrder(currentOrderId.value!, {
           logisticsCompany: deliveryForm.logisticsCompany,
           logisticsNo: deliveryForm.logisticsNo,
-          fileIds: deliveryAttachmentFileIds.value,
+          fileIds: deliveryFileIds.value,
           remark: deliveryForm.remark
         });
 
         message.success('发货信息已同步');
-
-        deliveryAttachmentFileIds.value = [];
+        deliveryFileIds.value = [];
         deliveryForm.remark = '';
-
         await reloadDetail();
-        await refreshCurrentTab();
       } finally {
         submittingDelivery.value = false;
       }
@@ -766,179 +1213,634 @@ async function submitDelivery() {
   });
 }
 
-
-
-function openRejectModal(row: any) {
-  rejectTarget.value = row;
-  rejectForm.reason = '';
-  showRejectModal.value = true;
+function openCreateBillModal() {
+  const amount = Number(currentOrder.value?.collabAmount || currentOrder.value?.senderRepairFeeAmount || 0);
+  billCreateForm.billAmount = amount > 0 ? Number(amount.toFixed(2)) : null;
+  billCreateForm.billTitle = `${currentOrder.value?.collabOrderNo || '协作单'} 协作账单`;
+  billCreateForm.billRemark = '';
+  billCreateForm.itemName = '协作服务费';
+  billCreateForm.itemType = 'COLLAB_SERVICE_FEE';
+  showBillCreateModal.value = true;
 }
 
+async function submitCreateBill() {
+  if (!currentOrderId.value) return;
 
-async function submitReject() {
-  if (!rejectTarget.value?.id) return;
-  if (!rejectForm.reason) {
-    message.warning('请输入拒单原因');
+  if (!billCreateForm.billAmount || billCreateForm.billAmount <= 0) {
+    message.warning('账单金额必须大于0');
     return;
   }
 
-  await rejectCollabOrder(rejectTarget.value.id, { reason: rejectForm.reason });
-  message.success('已拒单');
-  showRejectModal.value = false;
-  await loadReceived();
-}
-
-function handleAccept(row: any) {
-  dialog.warning({
-    title: '确认接单',
-    content: `确认接收协作单 ${row.collabOrderNo} 吗？`,
-    positiveText: '接单',
-    negativeText: '取消',
-    onPositiveClick: async () => {
-      await acceptCollabOrder(row.id);
-      message.success('接单成功');
-      await loadReceived();
-    }
-  });
-}
-const currentOrder = computed(() => detail.value?.order || {});
-
-
-const canReceiverSubmitHd = computed(() => {
-  const order = currentOrder.value;
-
-  return (
-    isReceiverView.value &&
-    order.materialPackageType === 'RAW_PHOTO' &&
-    ['MATERIAL_PROCESSING', 'HD_REJECTED', 'ACCEPTED'].includes(order.status || '')
-  );
-});
-
-const canSenderReviewHd = computed(() => {
-  const order = currentOrder.value;
-
-  return (
-    isSenderView.value &&
-    order.status === 'WAIT_HD_REVIEW'
-  );
-});
-
-const canReceiverSubmitEffect = computed(() => {
-  const order = currentOrder.value;
-
-  return (
-    isReceiverView.value &&
-    order.serviceType !== 'PRINT_ONLY' &&
-    ['REPAIRING', 'SENDER_REJECTED'].includes(order.status || '')
-  );
-});
-
-const canSenderReviewEffect = computed(() => {
-  const order = currentOrder.value;
-
-  return (
-    isSenderView.value &&
-    order.status === 'WAIT_SENDER_REVIEW'
-  );
-});
-
-
-async function loadEvents(orderId: string | number) {
-  loadingEvents.value = true;
+  submittingBill.value = true;
 
   try {
-    const res = await fetchCollabOrderEvents(orderId);
-    eventRows.value = unwrapData(res) || [];
+    const amount = Number(billCreateForm.billAmount.toFixed(2));
+
+    await createCollabBill({
+      collabOrderId: currentOrderId.value,
+      billAmount: amount,
+      billTitle: billCreateForm.billTitle || undefined,
+      billRemark: billCreateForm.billRemark || undefined,
+      items: [
+        {
+          itemName: billCreateForm.itemName || '协作服务费',
+          itemType: billCreateForm.itemType,
+          amount,
+          remark: billCreateForm.billRemark || undefined
+        }
+      ]
+    });
+
+    message.success('协作账单创建成功');
+    showBillCreateModal.value = false;
+    await reloadDetail();
   } finally {
-    loadingEvents.value = false;
+    submittingBill.value = false;
   }
 }
 
-function eventFileIds(row: any) {
-  if (!row?.attachmentsJson) return [];
+function confirmSendBill() {
+  if (!currentBill.value?.id) return;
+
+  dialog.warning({
+    title: '发送协作账单',
+    content: '发送后发单方可查看账单并上传付款凭证，是否继续？',
+    positiveText: '发送',
+    negativeText: '取消',
+    onPositiveClick: async () => {
+      submittingBill.value = true;
+
+      try {
+        await sendCollabBill(currentBill.value!.id!);
+        message.success('协作账单已发送');
+        await reloadDetail();
+      } finally {
+        submittingBill.value = false;
+      }
+    }
+  });
+}
+
+function openCancelBillModal() {
+  billCancelForm.reason = '';
+  showBillCancelModal.value = true;
+}
+
+async function submitCancelBill() {
+  if (!currentBill.value?.id) return;
+
+  if (!billCancelForm.reason.trim()) {
+    message.warning('请输入作废原因');
+    return;
+  }
+
+  submittingBill.value = true;
 
   try {
-    const payload =
-      typeof row.attachmentsJson === 'string'
-        ? JSON.parse(row.attachmentsJson)
-        : row.attachmentsJson;
+    await cancelCollabBill(currentBill.value.id, {
+      reason: billCancelForm.reason.trim()
+    });
 
-    return payload?.fileIds || [];
+    message.success('协作账单已作废');
+    showBillCancelModal.value = false;
+    await reloadDetail();
+  } finally {
+    submittingBill.value = false;
+  }
+}
+
+function confirmResyncBill() {
+  if (!currentBill.value?.id) return;
+
+  dialog.warning({
+    title: '重试内部账单同步',
+    content: '将重新尝试同步接单方内部客户账单，是否继续？',
+    positiveText: '重试',
+    negativeText: '取消',
+    onPositiveClick: async () => {
+      submittingBill.value = true;
+
+      try {
+        const res = await resyncCollabInternalBill(currentBill.value!.id!);
+        const data = unwrapData<any>(res);
+        if (data?.success === false) {
+          message.error(data.message || '内部账单同步失败');
+        } else {
+          message.success(data?.message || '内部账单同步成功');
+        }
+        await reloadDetail();
+      } finally {
+        submittingBill.value = false;
+      }
+    }
+  });
+}
+
+function openVoucherUploadModal() {
+  if (!currentBill.value) return;
+
+  const amount = Number(currentBill.value.unpaidAmount || currentBill.value.billAmount || 0);
+  voucherUploadForm.paymentAmount = amount > 0 ? Number(amount.toFixed(2)) : null;
+  voucherUploadForm.paymentChannel = 'WECHAT';
+  voucherUploadForm.payerName = '';
+  voucherUploadForm.transactionNo = '';
+  voucherUploadForm.remark = '';
+  voucherFileIds.value = [];
+  showVoucherUploadModal.value = true;
+}
+
+async function submitUploadVoucher() {
+  if (!currentBill.value?.id) return;
+
+  if (!voucherUploadForm.paymentAmount || voucherUploadForm.paymentAmount <= 0) {
+    message.warning('付款金额必须大于0');
+    return;
+  }
+
+  if (!voucherFileIds.value.length) {
+    message.warning('请上传付款凭证文件');
+    return;
+  }
+
+  submittingVoucher.value = true;
+
+  try {
+    await uploadCollabPaymentVoucher({
+      collabBillId: currentBill.value.id,
+      paymentAmount: Number(voucherUploadForm.paymentAmount.toFixed(2)),
+      paymentChannel: voucherUploadForm.paymentChannel,
+      payerName: voucherUploadForm.payerName || undefined,
+      transactionNo: voucherUploadForm.transactionNo || undefined,
+      fileIds: voucherFileIds.value,
+      remark: voucherUploadForm.remark || undefined
+    });
+
+    message.success('付款凭证已上传');
+    showVoucherUploadModal.value = false;
+    voucherFileIds.value = [];
+    await reloadDetail();
+  } finally {
+    submittingVoucher.value = false;
+  }
+}
+
+function openVoucherReviewModal(row: CollabPaymentVoucherVO, mode: 'approve' | 'reject') {
+  currentReviewVoucher.value = row;
+  voucherReviewMode.value = mode;
+  voucherReviewForm.reviewRemark = '';
+  showVoucherReviewModal.value = true;
+}
+
+async function submitVoucherReview() {
+  if (!currentReviewVoucher.value?.id) return;
+
+  if (voucherReviewMode.value === 'reject' && !voucherReviewForm.reviewRemark.trim()) {
+    message.warning('请输入驳回原因');
+    return;
+  }
+
+  submittingReview.value = true;
+
+  try {
+    if (voucherReviewMode.value === 'approve') {
+      await approveCollabPaymentVoucher(currentReviewVoucher.value.id, {
+        reviewRemark: voucherReviewForm.reviewRemark || undefined
+      });
+      message.success('付款凭证已审核通过');
+    } else {
+      await rejectCollabPaymentVoucher(currentReviewVoucher.value.id, {
+        reviewRemark: voucherReviewForm.reviewRemark.trim()
+      });
+      message.success('付款凭证已驳回');
+    }
+
+    showVoucherReviewModal.value = false;
+    await reloadDetail();
+  } finally {
+    submittingReview.value = false;
+  }
+}
+
+function confirmResyncPayment(row: CollabPaymentVoucherVO) {
+  if (!row.id) return;
+
+  dialog.warning({
+    title: '重试付款同步',
+    content: '将重新尝试同步内部收款和外协成本，是否继续？',
+    positiveText: '重试',
+    negativeText: '取消',
+    onPositiveClick: async () => {
+      submittingVoucher.value = true;
+
+      try {
+        const res = await resyncCollabPayment(row.id!);
+        const data = unwrapData<any>(res);
+        if (data?.success === false) {
+          message.error(data.message || '付款同步失败');
+        } else {
+          message.success(data?.message || '付款同步成功');
+        }
+        await reloadDetail();
+      } finally {
+        submittingVoucher.value = false;
+      }
+    }
+  });
+}
+
+function goToSend() {
+  router.push('/biz/collabordersend');
+}
+
+function renderAccountingSync(row: CollabOrderRow) {
+  const failed =
+    row.internalBillSyncStatus === 'FAILED' ||
+    row.internalPaymentSyncStatus === 'FAILED' ||
+    row.collabCostSyncStatus === 'FAILED';
+
+  const content = h(
+    NSpace,
+    { size: 4 },
+    {
+      default: () => [
+        h(
+          NTag,
+          { size: 'small', type: syncStatusTagType(row.internalBillSyncStatus) as any },
+          { default: () => `账单:${syncStatusText(row.internalBillSyncStatus)}` }
+        ),
+        h(
+          NTag,
+          { size: 'small', type: syncStatusTagType(row.internalPaymentSyncStatus) as any },
+          { default: () => `收款:${syncStatusText(row.internalPaymentSyncStatus)}` }
+        ),
+        h(
+          NTag,
+          { size: 'small', type: syncStatusTagType(row.collabCostSyncStatus) as any },
+          { default: () => `成本:${syncStatusText(row.collabCostSyncStatus)}` }
+        )
+      ]
+    }
+  );
+
+  return failed
+    ? h(NBadge, { dot: true, type: 'error' }, { default: () => content })
+    : content;
+}
+
+function renderSyncStatus(status?: string, error?: string) {
+  const tag = h(
+    NTag,
+    { type: syncStatusTagType(status) as any },
+    { default: () => syncStatusText(status) }
+  );
+
+  if (status !== 'FAILED') return tag;
+
+  return h(
+    NSpace,
+    { vertical: true, size: 4 },
+    {
+      default: () => [
+        tag,
+        h('span', { class: 'sync-error' }, error || '未知错误')
+      ]
+    }
+  );
+}
+
+function parseBillItems(value?: string | null) {
+  if (!value) return [];
+
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
   }
 }
 
-async function handleRouteOpenDetail() {
-  const tab = route.query.tab as string | undefined;
-  const collabOrderId = route.query.collabOrderId as string | undefined;
+function parseProofFileIds(value?: string | null): CollabId[] {
+  if (!value) return [];
 
-  if (tab === 'SENT' || tab === 'RECEIVED') {
-    activeTab.value = tab;
+  try {
+    const parsed = JSON.parse(value);
+    if (Array.isArray(parsed)) return parsed;
+  } catch {
+    // ignore
   }
 
-  await refreshCurrentTab();
-
-  if (collabOrderId) {
-    await openDetailById(collabOrderId);
-  }
+  return String(value)
+    .split(/[,，\s\n]+/)
+    .map(item => item.trim())
+    .filter(Boolean);
 }
 
-onMounted(async () => {
-  await Promise.all([
-    loadSent(),
-    loadReceived()
-  ]);
+function eventFileIds(row: CollabEventRow): CollabId[] {
+  if (!row.attachmentsJson) return [];
 
-  await handleRouteOpenDetail();
-});
+  try {
+    const parsed = JSON.parse(row.attachmentsJson);
+    if (Array.isArray(parsed)) return parsed;
+    if (Array.isArray(parsed?.fileIds)) return parsed.fileIds;
+  } catch {
+    return [];
+  }
 
+  return [];
+}
+
+function unwrapData<T = any>(res: any): T {
+  return res?.data ?? res;
+}
+
+function unwrapTable(res: any) {
+  const data = unwrapData<any>(res);
+
+  if (Array.isArray(data)) {
+    return {
+      rows: data,
+      total: data.length
+    };
+  }
+
+  const rows = data?.rows || data?.records || data?.list || [];
+  const total = Number(data?.total ?? data?.itemCount ?? rows.length ?? 0);
+
+  return {
+    rows,
+    total
+  };
+}
+
+function money(value?: number | string | null) {
+  if (value === undefined || value === null || value === '') return '-';
+
+  const numberValue = Number(value);
+  if (Number.isNaN(numberValue)) return String(value);
+
+  return `¥${numberValue.toFixed(2)}`;
+}
+
+function serviceTypeText(value?: string) {
+  const map: Record<string, string> = {
+    REPAIR_ONLY: '只修模',
+    PRINT_ONLY: '只打印',
+    REPAIR_PRINT: '修模 + 打印'
+  };
+  return value ? map[value] || value : '-';
+}
+
+function materialTypeText(value?: string) {
+  const map: Record<string, string> = {
+    RAW_PHOTO: '原始照片',
+    HD_PHOTO: '高清照片',
+    HD_PHOTO_AI_MODEL: '高清照片 + AI模型'
+  };
+  return value ? map[value] || value : '-';
+}
+
+function statusText(value?: string) {
+  const map: Record<string, string> = {
+    PENDING_ACCEPT: '待接单',
+    ACCEPTED: '已接单',
+    REJECTED: '已拒单',
+    CANCELLED: '已取消',
+    MATERIAL_PROCESSING: '高清图处理中',
+    WAIT_HD_REVIEW: '待高清图确认',
+    HD_REJECTED: '高清图驳回',
+    REPAIRING: '修模中',
+    WAIT_SENDER_REVIEW: '待发单方审核',
+    SENDER_REJECTED: '修模效果图驳回',
+    PRINTING: '打印中',
+    WAIT_DELIVERY: '待发货',
+    DELIVERED: '已发货',
+    WAIT_BILL: '待出账',
+    BILLED: '已出账',
+    VOUCHER_UPLOADED: '已上传凭证',
+    PAID_CONFIRMED: '已确认收款',
+    COMPLETED: '已完成'
+  };
+  return value ? map[value] || value : '-';
+}
+
+function statusTagType(value?: string) {
+  if (['COMPLETED', 'PAID_CONFIRMED', 'DELIVERED', 'ACCEPTED'].includes(value || '')) return 'success';
+  if (['REJECTED', 'CANCELLED', 'HD_REJECTED', 'SENDER_REJECTED'].includes(value || '')) return 'error';
+  if (['PENDING_ACCEPT', 'WAIT_HD_REVIEW', 'WAIT_SENDER_REVIEW', 'WAIT_DELIVERY', 'WAIT_BILL', 'VOUCHER_UPLOADED'].includes(value || '')) {
+    return 'warning';
+  }
+  return 'info';
+}
+
+function paymentStatusText(value?: string) {
+  const map: Record<string, string> = {
+    UNBILLED: '未出账',
+    BILLED: '已出账',
+    VOUCHER_UPLOADED: '已上传凭证',
+    VOUCHER_REJECTED: '凭证被驳回',
+    PAID_CONFIRMED: '已确认收款'
+  };
+  return value ? map[value] || value : '-';
+}
+
+function paymentStatusTagType(value?: string) {
+  if (value === 'PAID_CONFIRMED') return 'success';
+  if (value === 'VOUCHER_UPLOADED') return 'warning';
+  if (value === 'VOUCHER_REJECTED') return 'error';
+  if (value === 'BILLED') return 'info';
+  return 'default';
+}
+
+function billStatusText(value?: string) {
+  const map: Record<string, string> = {
+    DRAFT: '草稿',
+    SENT: '已发送',
+    CANCELLED: '已作废'
+  };
+  return value ? map[value] || value : '-';
+}
+
+function billStatusTagType(value?: string) {
+  if (value === 'SENT') return 'success';
+  if (value === 'CANCELLED') return 'error';
+  if (value === 'DRAFT') return 'warning';
+  return 'default';
+}
+
+function payStatusText(value?: string) {
+  const map: Record<string, string> = {
+    UNPAID: '未付款',
+    PARTIAL: '部分付款',
+    PAID: '已付款'
+  };
+  return value ? map[value] || value : '-';
+}
+
+function payStatusTagType(value?: string) {
+  if (value === 'PAID') return 'success';
+  if (value === 'PARTIAL') return 'warning';
+  if (value === 'UNPAID') return 'error';
+  return 'default';
+}
+
+function syncStatusText(value?: string) {
+  const map: Record<string, string> = {
+    NOT_SYNCED: '未同步',
+    SYNCED: '已同步',
+    FAILED: '同步失败'
+  };
+  return value ? map[value] || value : '-';
+}
+
+function syncStatusTagType(value?: string) {
+  if (value === 'SYNCED') return 'success';
+  if (value === 'FAILED') return 'error';
+  if (value === 'NOT_SYNCED') return 'warning';
+  return 'default';
+}
+
+function reviewStatusText(value?: string) {
+  const map: Record<string, string> = {
+    PENDING: '待审核',
+    APPROVED: '已通过',
+    REJECTED: '已驳回'
+  };
+  return value ? map[value] || value : '-';
+}
+
+function reviewStatusTagType(value?: string) {
+  if (value === 'APPROVED') return 'success';
+  if (value === 'REJECTED') return 'error';
+  if (value === 'PENDING') return 'warning';
+  return 'default';
+}
+
+function paymentChannelText(value?: string) {
+  const map: Record<string, string> = {
+    WECHAT: '微信',
+    ALIPAY: '支付宝',
+    BANK: '银行转账',
+    CASH: '现金',
+    OTHER: '其他'
+  };
+  return value ? map[value] || value : '-';
+}
+
+function billItemTypeText(value?: string) {
+  const map: Record<string, string> = {
+    COLLAB_SERVICE_FEE: '协作服务费',
+    REPAIR_FEE: '修模费',
+    PRINT_FEE: '打印费',
+    DELIVERY_FEE: '发货费',
+    OTHER_FEE: '其他费用'
+  };
+  return value ? map[value] || value : '-';
+}
+
+function printStatusText(value?: string) {
+  const map: Record<string, string> = {
+    NONE: '无',
+    WAIT_PRINT: '待打印',
+    PRINTING: '打印中',
+    PRINT_COMPLETED: '打印完成'
+  };
+  return value ? map[value] || value : '-';
+}
+
+function deliveryStatusText(value?: string) {
+  const map: Record<string, string> = {
+    NONE: '无',
+    WAIT_DELIVERY: '待发货',
+    DELIVERED: '已发货',
+    RECEIVED: '已签收'
+  };
+  return value ? map[value] || value : '-';
+}
+
+function fileTypeText(value?: string) {
+  const map: Record<string, string> = {
+    RAW_PHOTO: '原始照片',
+    HD_PHOTO: '高清照片',
+    AI_MODEL_FILE: 'AI模型',
+    PROCESSED_HD: '处理后高清图',
+    EFFECT: '修模效果图',
+    DELIVERY_ATTACHMENT: '发货附件',
+    PAYMENT_VOUCHER: '付款凭证',
+    REMARK_IMAGE: '备注图',
+    OTHER: '其他'
+  };
+  return value ? map[value] || value : '-';
+}
+
+function isImageFileType(value?: string) {
+  return ['RAW_PHOTO', 'HD_PHOTO', 'PROCESSED_HD', 'EFFECT', 'DELIVERY_ATTACHMENT', 'PAYMENT_VOUCHER', 'REMARK_IMAGE'].includes(value || '');
+}
+
+function eventTypeText(value?: string) {
+  const map: Record<string, string> = {
+    SEND: '发单',
+    ACCEPT: '接单',
+    REJECT: '拒单',
+    HD_SUBMIT: '提交高清图',
+    HD_APPROVE: '高清图通过',
+    HD_REJECT: '高清图驳回',
+    EFFECT_SUBMIT: '提交效果图',
+    EFFECT_APPROVE: '效果图通过',
+    EFFECT_REJECT: '效果图驳回',
+    PRINT_STATUS_SYNC: '打印状态同步',
+    DELIVERY_SYNC: '发货同步',
+    BILL_CREATE: '创建协作账单',
+    BILL_SEND: '发送协作账单',
+    BILL_CANCEL: '作废协作账单',
+    PAYMENT_VOUCHER_UPLOAD: '上传付款凭证',
+    PAYMENT_VOUCHER_APPROVE: '付款凭证审核通过',
+    PAYMENT_VOUCHER_REJECT: '付款凭证被驳回',
+    INTERNAL_BILL_SYNC: '内部账单同步',
+    INTERNAL_PAYMENT_SYNC: '内部收款同步',
+    COLLAB_COST_SYNC: '外协成本同步'
+  };
+  return value ? map[value] || value : '-';
+}
+
+function timelineType(value?: string) {
+  if (!value) return 'default';
+  if (value.includes('REJECT') || value.includes('FAILED')) return 'error';
+  if (value.includes('APPROVE') || value === 'ACCEPT' || value === 'DELIVERY_SYNC') return 'success';
+  if (value.includes('SYNC') || value.includes('BILL') || value.includes('PAYMENT')) return 'info';
+  return 'default';
+}
 </script>
 
 <template>
   <NSpace vertical :size="16">
-    <NCard title="协作单列表" :bordered="false">
+    <NCard title="协作单处理中心" :bordered="false">
       <NSpace justify="space-between" align="center">
         <div>
-          <strong>发出的协作单 / 收到的协作单</strong>
-          <div style="margin-top: 6px; color: #888">
-            这里查看好友定向发单后的状态，接单方可以直接接单或拒单。
+          <strong>协作单处理中心</strong>
+          <div class="page-desc">
+            统一查看发出的协作单和收到的协作单，处理接单、审核、打印、发货、账单和付款凭证。
           </div>
         </div>
 
-        <NButton type="primary" @click="router.push('/xiezuo/collab-order-send')">
-          好友定向发单
-        </NButton>
+        <NSpace>
+          <NButton @click="loadCurrentTab">刷新</NButton>
+          <NButton type="primary" @click="goToSend">发起协作</NButton>
+        </NSpace>
       </NSpace>
     </NCard>
 
     <NCard :bordered="false">
       <NForm inline label-placement="left">
         <NFormItem label="状态">
-          <NSelect
-            v-model:value="queryForm.status"
-            :options="statusOptions"
-            clearable
-            style="width: 160px"
-          />
+          <NSelect v-model:value="queryForm.status" :options="statusOptions" clearable style="width: 180px" />
         </NFormItem>
 
         <NFormItem label="服务类型">
-          <NSelect
-            v-model:value="queryForm.serviceType"
-            :options="serviceTypeOptions"
-            clearable
-            style="width: 150px"
-          />
+          <NSelect v-model:value="queryForm.serviceType" :options="serviceTypeOptions" clearable style="width: 150px" />
         </NFormItem>
 
         <NFormItem label="资料类型">
-          <NSelect
-            v-model:value="queryForm.materialPackageType"
-            :options="materialTypeOptions"
-            clearable
-            style="width: 180px"
-          />
+          <NSelect v-model:value="queryForm.materialPackageType" :options="materialTypeOptions" clearable style="width: 180px" />
         </NFormItem>
 
         <NFormItem label="关键词">
@@ -946,7 +1848,8 @@ onMounted(async () => {
             v-model:value="queryForm.keyword"
             clearable
             placeholder="协作单号 / 源订单号 / 商家名称"
-            style="width: 260px"
+            style="width: 280px"
+            @keyup.enter="search"
           />
         </NFormItem>
 
@@ -960,598 +1863,507 @@ onMounted(async () => {
     </NCard>
 
     <NCard :bordered="false">
-      <NTabs v-model:value="activeTab" type="line" animated @update:value="refreshCurrentTab">
-        <NTabPane name="SENT" tab="发出的协作单">
+      <NTabs :value="activeTab" type="line" animated @update:value="handleTabChange">
+        <NTabPane name="RECEIVED" tab="收到的协作单">
           <NDataTable
-            :loading="loadingSent"
-            :columns="columns"
-            :data="sentRows"
-            :pagination="false"
-            :scroll-x="1400"
+            remote
             size="small"
+            :loading="loadingReceived"
+            :columns="baseColumns"
+            :data="receivedRows"
+            :pagination="receivedPagination"
+            :scroll-x="1900"
+            :row-key="row => row.id"
+            @update:page="handleReceivedPageChange"
+            @update:page-size="handleReceivedPageSizeChange"
           />
         </NTabPane>
 
-        <NTabPane name="RECEIVED" tab="收到的协作单">
+        <NTabPane name="SENT" tab="发出的协作单">
           <NDataTable
-            :loading="loadingReceived"
-            :columns="columns"
-            :data="receivedRows"
-            :pagination="false"
-            :scroll-x="1400"
+            remote
             size="small"
+            :loading="loadingSent"
+            :columns="baseColumns"
+            :data="sentRows"
+            :pagination="sentPagination"
+            :scroll-x="1900"
+            :row-key="row => row.id"
+            @update:page="handleSentPageChange"
+            @update:page-size="handleSentPageSizeChange"
           />
         </NTabPane>
       </NTabs>
     </NCard>
 
-    <NDrawer v-model:show="showDetailDrawer" width="980" placement="right">
+    <NDrawer v-model:show="showDetailDrawer" :width="1120" placement="right">
       <NDrawerContent title="协作单详情" closable>
-        <NSpace v-if="detail" vertical :size="16">
-          <NCard title="基础信息" size="small">
-            <NDescriptions bordered :column="3" size="small">
-              <NDescriptionsItem label="协作单号">
-                {{ detail.order?.collabOrderNo || '-' }}
-              </NDescriptionsItem>
+        <NSpin :show="loadingDetail">
+          <NSpace v-if="detail" vertical :size="16">
+            <NAlert v-if="syncFailedCount > 0" type="error" show-icon>
+              当前协作单存在 {{ syncFailedCount }} 项账务同步异常，请在“账单与支付”中查看失败原因并重试。
+            </NAlert>
 
-              <NDescriptionsItem label="源订单号">
-                {{ detail.order?.sourceOrderNoSnapshot || '-' }}
-              </NDescriptionsItem>
-
-              <NDescriptionsItem label="状态">
-                {{ statusLabel(detail.order?.status) }}
-              </NDescriptionsItem>
-
-              <NDescriptionsItem label="发单方">
-                {{ detail.order?.senderTenantNameSnapshot || '-' }}
-              </NDescriptionsItem>
-
-              <NDescriptionsItem label="接单方">
-                {{ detail.order?.receiverTenantNameSnapshot || '-' }}
-              </NDescriptionsItem>
-
-              <NDescriptionsItem label="服务类型">
-                {{ serviceLabel(detail.order?.serviceType) }}
-              </NDescriptionsItem>
-
-              <NDescriptionsItem label="资料类型">
-                {{ materialLabel(detail.order?.materialPackageType) }}
-              </NDescriptionsItem>
-
-              <NDescriptionsItem label="约定修模费用">
-                {{ detail.order?.senderRepairFeeAmount || '-' }}
-              </NDescriptionsItem>
-
-              <NDescriptionsItem label="接单时间">
-                {{ detail.order?.acceptTime || '-' }}
-              </NDescriptionsItem>
-
-              <NDescriptionsItem label="拒单原因" :span="3">
-                {{ detail.order?.rejectReason || '-' }}
-              </NDescriptionsItem>
-
-              <NDescriptionsItem label="备注/要求" :span="3">
-                {{ detail.order?.requirementDesc || '-' }}
-              </NDescriptionsItem>
-            </NDescriptions>
-          </NCard>
-
-          <NCard title="附件" size="small">
-            <NSpace vertical :size="16">
-              <div v-if="detailFileIds('RAW_PHOTO').length > 0">
-                <strong>原始照片</strong>
-                <BizFileViewer
-                  :file-ids="detailFileIds('RAW_PHOTO')"
-                  mode="image"
-                  :max="20"
-                  :thumb-size="80"
-                  show-name
-                />
-              </div>
-
-              <div v-if="detailFileIds('PROCESSED_HD_PHOTO').length > 0">
-                <strong>处理后高清图</strong>
-                <BizFileViewer
-                  :file-ids="detailFileIds('PROCESSED_HD_PHOTO')"
-                  mode="image"
-                  :max="20"
-                  :thumb-size="80"
-                  show-name
-                />
-              </div>
-
-              <div v-if="detailFileIds('REPAIR_EFFECT_IMAGE').length > 0">
-                <strong>修模效果图</strong>
-                <BizFileViewer
-                  :file-ids="detailFileIds('REPAIR_EFFECT_IMAGE')"
-                  mode="image"
-                  :max="20"
-                  :thumb-size="80"
-                  show-name
-                />
-              </div>
-
-              <div v-if="detailFileIds('AI_MODEL_FILE').length > 0">
-                <strong>AI模型文件</strong>
-                <BizFileViewer
-                  :file-ids="detailFileIds('AI_MODEL_FILE')"
-                  mode="file"
-                  :max="10"
-                  :thumb-size="80"
-                  show-name
-                />
-              </div>
-
-              <div v-if="detailFileIds('REMARK_IMAGE').length > 0">
-                <strong>备注图</strong>
-                <BizFileViewer
-                  :file-ids="detailFileIds('REMARK_IMAGE')"
-                  mode="image"
-                  :max="20"
-                  :thumb-size="80"
-                  show-name
-                />
-              </div>
-            </NSpace>
-          </NCard>
-
-          <NCard
-            v-if="canReceiverSubmitHd"
-            title="高清图处理"
-            size="small"
-          >
-            <NSpace vertical :size="12">
-              <div style="color: #888">
-                当前协作单是原始照片发单。请先处理高清图，处理完成后提交给发单方确认。
-              </div>
-
-              <BizFileUpload
-                v-model="processedHdFileIds"
-                biz-type="TEMP"
-                file-stage="COLLAB_HD_REVIEW"
-                file-type="PROCESSED_HD_PHOTO"
-                :max="10"
-              />
-
-              <BizFileViewer
-                v-if="processedHdFileIds.length > 0"
-                :file-ids="processedHdFileIds"
-                mode="image"
-                :max="10"
-                :thumb-size="80"
-                show-name
-              />
-
-              <NInput
-                v-model:value="hdSubmitComment"
-                type="textarea"
-                :autosize="{ minRows: 2, maxRows: 4 }"
-                placeholder="请输入高清图处理说明"
-              />
-
-              <NSpace justify="end">
-                <NButton type="primary" @click="submitHdReview">
-                  提交高清图给发单方确认
-                </NButton>
-              </NSpace>
-            </NSpace>
-          </NCard>
-
-          <NCard
-            v-if="canSenderReviewHd"
-            title="高清图确认"
-            size="small"
-          >
-            <NSpace vertical :size="12">
-              <div style="color: #888">
-                接单方已提交处理后的高清图，请确认是否可以进入修模流程。
-              </div>
-
-              <BizFileViewer
-                v-if="detailFileIds('PROCESSED_HD_PHOTO').length > 0"
-                :file-ids="detailFileIds('PROCESSED_HD_PHOTO')"
-                mode="image"
-                :max="10"
-                :thumb-size="80"
-                show-name
-              />
-
-              <NInput
-                v-model:value="hdReviewComment"
-                type="textarea"
-                :autosize="{ minRows: 2, maxRows: 4 }"
-                placeholder="请输入审核意见"
-              />
-
-              <NSpace justify="end">
-                <NButton type="primary" @click="approveHdReview">
-                  通过
-                </NButton>
-
-                <NButton type="error" @click="openReviewReject('HD')">
-                  驳回
-                </NButton>
-              </NSpace>
-            </NSpace>
-          </NCard>
-
-
-          <NCard
-            v-if="canReceiverSubmitEffect"
-            title="修模效果图提交"
-            size="small"
-          >
-            <NSpace vertical :size="12">
-              <div style="color: #888">
-                接单方内部审核完成后，请上传修模效果图并提交给发单方审核。
-              </div>
-
-              <BizFileUpload
-                v-model="effectFileIds"
-                biz-type="TEMP"
-                file-stage="COLLAB_EFFECT_REVIEW"
-                file-type="REPAIR_EFFECT_IMAGE"
-                :max="10"
-              />
-
-              <BizFileViewer
-                v-if="effectFileIds.length > 0"
-                :file-ids="effectFileIds"
-                mode="image"
-                :max="10"
-                :thumb-size="80"
-                show-name
-              />
-
-              <NInput
-                v-model:value="effectSubmitComment"
-                type="textarea"
-                :autosize="{ minRows: 2, maxRows: 4 }"
-                placeholder="请输入修模效果图说明"
-              />
-
-              <NSpace justify="end">
-                <NButton type="primary" @click="submitEffectReview">
-                  提交发单方审核
-                </NButton>
-              </NSpace>
-            </NSpace>
-          </NCard>
-          <NCard
-            v-if="canSenderReviewEffect"
-            title="修模效果图审核"
-            size="small"
-          >
-            <NSpace vertical :size="12">
-              <div style="color: #888">
-                接单方已提交修模效果图，请审核是否通过。
-              </div>
-
-              <BizFileViewer
-                v-if="detailFileIds('REPAIR_EFFECT_IMAGE').length > 0"
-                :file-ids="detailFileIds('REPAIR_EFFECT_IMAGE')"
-                mode="image"
-                :max="10"
-                :thumb-size="80"
-                show-name
-              />
-
-              <NInput
-                v-model:value="effectReviewComment"
-                type="textarea"
-                :autosize="{ minRows: 2, maxRows: 4 }"
-                placeholder="请输入审核意见"
-              />
-
-              <NSpace justify="end">
-                <NButton type="primary" @click="approveEffectReview">
-                  通过
-                </NButton>
-
-                <NButton type="error" @click="openReviewReject('EFFECT')">
-                  驳回
-                </NButton>
-              </NSpace>
-            </NSpace>
-          </NCard>
-
-          <NCard
-            v-if="canReceiverSyncPrint"
-            title="打印状态同步"
-            size="small"
-          >
-            <NSpace vertical :size="12">
-              <div style="color: #888">
-                当前协作单已进入打印流程，请同步打印状态给发单方。
-              </div>
-
-              <NForm label-placement="left" label-width="110">
-                <NFormItem label="打印状态">
-                  <NSelect
-                    v-model:value="printForm.printStatus"
-                    :options="printStatusOptions"
-                    style="width: 240px"
-                  />
-                </NFormItem>
-
-                <NFormItem label="打印备注">
-                  <NInput
-                    v-model:value="printForm.remark"
-                    type="textarea"
-                    :autosize="{ minRows: 2, maxRows: 4 }"
-                    placeholder="请输入打印状态备注"
-                  />
-                </NFormItem>
-              </NForm>
-
-              <NSpace justify="end">
-                <NButton
-                  type="primary"
-                  :loading="syncingPrint"
-                  @click="submitPrintStatus"
-                >
-                  同步打印状态
-                </NButton>
-              </NSpace>
-            </NSpace>
-          </NCard>
-
-          <NCard
-            v-if="canViewPrintInfo"
-            title="打印状态"
-            size="small"
-          >
-            <NDescriptions bordered :column="2" size="small">
-              <NDescriptionsItem label="打印状态">
-                {{ printStatusLabel(detail.order?.printStatus) }}
-              </NDescriptionsItem>
-
-              <NDescriptionsItem label="更新时间">
-                {{ detail.order?.printStatusUpdateTime || '-' }}
-              </NDescriptionsItem>
-
-              <NDescriptionsItem label="打印完成时间">
-                {{ detail.order?.printCompletedTime || '-' }}
-              </NDescriptionsItem>
-
-              <NDescriptionsItem label="打印备注">
-                {{ detail.order?.printRemark || '-' }}
-              </NDescriptionsItem>
-            </NDescriptions>
-          </NCard>
-
-
-          <NCard
-            v-if="canReceiverDelivery"
-            title="发货信息同步"
-            size="small"
-          >
-            <NSpace vertical :size="12">
-              <div style="color: #888">
-                打印已完成，请填写物流信息并同步给发单方。
-              </div>
-
-              <NForm label-placement="left" label-width="110">
-                <NFormItem label="物流公司" required>
-                  <NInput
-                    v-model:value="deliveryForm.logisticsCompany"
-                    placeholder="请输入物流公司"
-                  />
-                </NFormItem>
-
-                <NFormItem label="物流单号" required>
-                  <NInput
-                    v-model:value="deliveryForm.logisticsNo"
-                    placeholder="请输入物流单号"
-                  />
-                </NFormItem>
-
-                <NFormItem label="发货附件">
-                  <NSpace vertical>
-                    <BizFileUpload
-                      v-model="deliveryAttachmentFileIds"
-                      biz-type="TEMP"
-                      file-stage="COLLAB_DELIVERY"
-                      file-type="DELIVERY_ATTACHMENT"
-                      :max="10"
-                    />
-
-                    <BizFileViewer
-                      v-if="deliveryAttachmentFileIds.length > 0"
-                      :file-ids="deliveryAttachmentFileIds"
-                      mode="image"
-                      :max="10"
-                      :thumb-size="80"
-                      show-name
-                    />
-                  </NSpace>
-                </NFormItem>
-
-                <NFormItem label="发货备注">
-                  <NInput
-                    v-model:value="deliveryForm.remark"
-                    type="textarea"
-                    :autosize="{ minRows: 2, maxRows: 4 }"
-                    placeholder="请输入发货备注"
-                  />
-                </NFormItem>
-              </NForm>
-
-              <NSpace justify="end">
-                <NButton
-                  type="primary"
-                  :loading="submittingDelivery"
-                  @click="submitDelivery"
-                >
-                  确认发货
-                </NButton>
-              </NSpace>
-            </NSpace>
-          </NCard>
-
-          <NCard
-            v-if="canViewDeliveryInfo"
-            title="发货信息"
-            size="small"
-          >
-            <NSpace vertical :size="12">
-              <NDescriptions bordered :column="2" size="small">
-                <NDescriptionsItem label="发货状态">
-                  {{ deliveryStatusLabel(detail.order?.deliveryStatus) }}
+            <NCard title="基础信息" size="small">
+              <NDescriptions bordered size="small" :column="3">
+                <NDescriptionsItem label="协作单号">
+                  {{ currentOrder.collabOrderNo || '-' }}
                 </NDescriptionsItem>
-
-                <NDescriptionsItem label="发货时间">
-                  {{ detail.order?.deliveredTime || '-' }}
+                <NDescriptionsItem label="源订单号">
+                  {{ currentOrder.sourceOrderNoSnapshot || '-' }}
                 </NDescriptionsItem>
-
-                <NDescriptionsItem label="物流公司">
-                  {{ detail.order?.logisticsCompany || '-' }}
+                <NDescriptionsItem label="客户">
+                  {{ currentOrder.sourceCustomerNameSnapshot || '-' }}
                 </NDescriptionsItem>
-
-                <NDescriptionsItem label="物流单号">
-                  {{ detail.order?.logisticsNo || '-' }}
+                <NDescriptionsItem label="发单方">
+                  {{ currentOrder.senderTenantNameSnapshot || '-' }}
                 </NDescriptionsItem>
-
-                <NDescriptionsItem label="发货备注" :span="2">
-                  {{ detail.order?.deliveryRemark || '-' }}
+                <NDescriptionsItem label="接单方">
+                  {{ currentOrder.receiverTenantNameSnapshot || '-' }}
+                </NDescriptionsItem>
+                <NDescriptionsItem label="服务类型">
+                  {{ serviceTypeText(currentOrder.serviceType) }}
+                </NDescriptionsItem>
+                <NDescriptionsItem label="资料类型">
+                  {{ materialTypeText(currentOrder.materialPackageType) }}
+                </NDescriptionsItem>
+                <NDescriptionsItem label="协作状态">
+                  <NTag :type="statusTagType(currentOrder.status) as any">
+                    {{ statusText(currentOrder.status) }}
+                  </NTag>
+                </NDescriptionsItem>
+                <NDescriptionsItem label="付款状态">
+                  <NTag :type="paymentStatusTagType(currentOrder.paymentStatus) as any">
+                    {{ paymentStatusText(currentOrder.paymentStatus) }}
+                  </NTag>
+                </NDescriptionsItem>
+                <NDescriptionsItem label="修模费用">
+                  {{ money(currentOrder.senderRepairFeeAmount) }}
+                </NDescriptionsItem>
+                <NDescriptionsItem label="创建时间">
+                  {{ currentOrder.createTime || '-' }}
+                </NDescriptionsItem>
+                <NDescriptionsItem label="标题">
+                  {{ currentOrder.title || '-' }}
+                </NDescriptionsItem>
+                <NDescriptionsItem label="需求说明">
+                  {{ currentOrder.requirementDesc || '-' }}
                 </NDescriptionsItem>
               </NDescriptions>
+            </NCard>
 
-              <div v-if="detailFileIds('DELIVERY_ATTACHMENT').length > 0">
-                <strong>发货附件</strong>
+            <NCard title="打印 / 发货信息" size="small">
+              <NDescriptions bordered size="small" :column="3">
+                <NDescriptionsItem label="打印状态">
+                  {{ printStatusText(currentOrder.printStatus) }}
+                </NDescriptionsItem>
+                <NDescriptionsItem label="打印完成时间">
+                  {{ currentOrder.printCompletedTime || '-' }}
+                </NDescriptionsItem>
+                <NDescriptionsItem label="发货状态">
+                  {{ deliveryStatusText(currentOrder.deliveryStatus) }}
+                </NDescriptionsItem>
+                <NDescriptionsItem label="物流公司">
+                  {{ currentOrder.logisticsCompany || '-' }}
+                </NDescriptionsItem>
+                <NDescriptionsItem label="物流单号">
+                  {{ currentOrder.logisticsNo || '-' }}
+                </NDescriptionsItem>
+                <NDescriptionsItem label="发货时间">
+                  {{ currentOrder.deliveredTime || '-' }}
+                </NDescriptionsItem>
+              </NDescriptions>
+            </NCard>
 
-                <BizFileViewer
-                  :file-ids="detailFileIds('DELIVERY_ATTACHMENT')"
-                  mode="image"
-                  :max="10"
-                  :thumb-size="80"
-                  show-name
-                />
-              </div>
-            </NSpace>
-          </NCard>
+            <CollabBillingPanel
+              v-if="detail"
+              :detail="detail"
+              :role="activeTab === 'SENT' ? 'sender' : 'receiver'"
+              @refresh="handleBillingRefresh"
+            />
 
+            <NCard title="处理动作" size="small">
+              <NSpace vertical :size="16">
+                <NAlert v-if="canAcceptOrReject" type="warning" show-icon>
+                  当前协作单待接单，请确认后选择接单或拒单。
+                </NAlert>
 
-          <NCard title="协作时间线" size="small">
-            <NSpace vertical>
-              <NTimeline v-if="eventRows.length > 0">
-                <NTimelineItem
-                  v-for="item in eventRows"
-                  :key="item.id"
-                  :type="timelineItemType(item.eventType)"
-                  :title="item.eventName || eventTypeLabel(item.eventType)"
-                  :time="item.createTime"
-                >
-                  <NSpace vertical :size="6">
-                    <div>
-                      {{ item.eventContent || '-' }}
-                    </div>
+                <NSpace v-if="canAcceptOrReject">
+                  <NButton type="primary" @click="handleAccept(currentOrder)">接单</NButton>
+                  <NButton type="error" ghost @click="openRejectModal(currentOrder)">拒单</NButton>
+                </NSpace>
 
-                    <div style="color: #888; font-size: 12px;">
-                      操作方：{{ item.operatorTenantNameSnapshot || '-' }}
-                      /
-                      操作人：{{ item.operatorUserName || '-' }}
-                    </div>
+                <NCard v-if="canSubmitHd" title="提交处理后的高清图" embedded size="small">
+                  <NForm label-placement="left" label-width="120px">
+                    <NFormItem label="高清图文件" required>
+                      <BizFileUpload
+                        v-model="processedHdFileIds"
+                        biz-type="COLLAB_ORDER"
+                        :biz-id="currentOrderId"
+                        file-stage="COLLAB_PROCESS"
+                        file-type="PROCESSED_HD"
+                        :max="10"
+                        :accept="imageAccept"
+                      />
+                    </NFormItem>
+                    <NFormItem v-if="processedHdFileIds.length" label="已上传">
+                      <BizFileViewer :file-ids="processedHdFileIds" mode="image" :max="10" :thumb-size="80" show-name />
+                    </NFormItem>
+                    <NFormItem label="备注">
+                      <NInput v-model:value="hdSubmitComment" type="textarea" placeholder="请输入备注" />
+                    </NFormItem>
+                    <NFormItem>
+                      <NButton type="primary" :loading="submittingHd" @click="submitHdReview">提交高清图</NButton>
+                    </NFormItem>
+                  </NForm>
+                </NCard>
 
-                    <BizFileViewer
-                      v-if="eventFileIds(item).length > 0"
-                      :file-ids="eventFileIds(item)"
-                      mode="image"
-                      :max="10"
-                      :thumb-size="80"
-                      show-name
-                    />
+                <NCard v-if="canReviewHd" title="高清图确认" embedded size="small">
+                  <NSpace>
+                    <NButton type="success" @click="openHdReviewModal('APPROVE')">确认通过</NButton>
+                    <NButton type="error" ghost @click="openHdReviewModal('REJECT')">驳回</NButton>
                   </NSpace>
-                </NTimelineItem>
-              </NTimeline>
+                </NCard>
 
-              <div v-else style="color: #888">
-                暂无时间线记录
-              </div>
-            </NSpace>
-          </NCard>
+                <NCard v-if="canSubmitEffect" title="提交修模效果图" embedded size="small">
+                  <NForm label-placement="left" label-width="120px">
+                    <NFormItem label="效果图文件" required>
+                      <BizFileUpload
+                        v-model="effectFileIds"
+                        biz-type="COLLAB_ORDER"
+                        :biz-id="currentOrderId"
+                        file-stage="REPAIR_EFFECT"
+                        file-type="EFFECT"
+                        :max="10"
+                        :accept="imageAccept"
+                      />
+                    </NFormItem>
+                    <NFormItem v-if="effectFileIds.length" label="已上传">
+                      <BizFileViewer :file-ids="effectFileIds" mode="image" :max="10" :thumb-size="80" show-name />
+                    </NFormItem>
+                    <NFormItem label="备注">
+                      <NInput v-model:value="effectSubmitComment" type="textarea" placeholder="请输入备注" />
+                    </NFormItem>
+                    <NFormItem>
+                      <NButton type="primary" :loading="submittingEffect" @click="submitEffectReview">提交效果图</NButton>
+                    </NFormItem>
+                  </NForm>
+                </NCard>
 
-        </NSpace>
+                <NCard v-if="canReviewEffect" title="修模效果图审核" embedded size="small">
+                  <NSpace>
+                    <NButton type="success" @click="openEffectReviewModal('APPROVE')">审核通过</NButton>
+                    <NButton type="error" ghost @click="openEffectReviewModal('REJECT')">驳回</NButton>
+                  </NSpace>
+                </NCard>
+
+                <NCard v-if="canSyncPrint" title="同步打印状态" embedded size="small">
+                  <NForm label-placement="left" label-width="120px">
+                    <NFormItem label="打印状态" required>
+                      <NSelect v-model:value="printForm.printStatus" :options="printStatusOptions" style="width: 220px" />
+                    </NFormItem>
+                    <NFormItem label="备注">
+                      <NInput v-model:value="printForm.remark" type="textarea" placeholder="请输入备注" />
+                    </NFormItem>
+                    <NFormItem>
+                      <NButton type="primary" :loading="submittingPrint" @click="submitPrintStatus">同步打印状态</NButton>
+                    </NFormItem>
+                  </NForm>
+                </NCard>
+
+                <NCard v-if="canDelivery" title="同步发货信息" embedded size="small">
+                  <NForm label-placement="left" label-width="120px">
+                    <NFormItem label="物流公司" required>
+                      <NInput v-model:value="deliveryForm.logisticsCompany" placeholder="请输入物流公司" />
+                    </NFormItem>
+                    <NFormItem label="物流单号" required>
+                      <NInput v-model:value="deliveryForm.logisticsNo" placeholder="请输入物流单号" />
+                    </NFormItem>
+                    <NFormItem label="发货附件">
+                      <BizFileUpload
+                        v-model="deliveryFileIds"
+                        biz-type="COLLAB_ORDER"
+                        :biz-id="currentOrderId"
+                        file-stage="DELIVERY"
+                        file-type="DELIVERY_ATTACHMENT"
+                        :max="10"
+                        :accept="imageAccept"
+                      />
+                    </NFormItem>
+                    <NFormItem v-if="deliveryFileIds.length" label="已上传">
+                      <BizFileViewer :file-ids="deliveryFileIds" mode="auto" :max="10" :thumb-size="80" show-name />
+                    </NFormItem>
+                    <NFormItem label="备注">
+                      <NInput v-model:value="deliveryForm.remark" type="textarea" placeholder="请输入备注" />
+                    </NFormItem>
+                    <NFormItem>
+                      <NButton type="primary" :loading="submittingDelivery" @click="submitDelivery">确认发货</NButton>
+                    </NFormItem>
+                  </NForm>
+                </NCard>
+
+                <NAlert
+                  v-if="!canAcceptOrReject && !canSubmitHd && !canReviewHd && !canSubmitEffect && !canReviewEffect && !canSyncPrint && !canDelivery"
+                  type="info"
+                  show-icon
+                >
+                  当前状态暂无工序处理动作。
+                </NAlert>
+              </NSpace>
+            </NCard>
+
+            <CollabBillingPanel
+              v-if="detail"
+              :detail="detail"
+              :role="activeTab === 'SENT' ? 'sender' : 'receiver'"
+              @refresh="handleBillingRefresh"
+            />
+
+
+            <NCard title="附件与时间线" size="small">
+              <NTabs v-model:value="activeDetailTab" type="line" animated>
+                <NTabPane name="base" tab="附件">
+                  <NDataTable
+                    v-if="currentFiles.length"
+                    size="small"
+                    :columns="fileColumns"
+                    :data="currentFiles"
+                    :pagination="false"
+                    bordered
+                  />
+                  <NEmpty v-else description="暂无附件" />
+                </NTabPane>
+
+                <NTabPane name="events" tab="时间线">
+                  <NSpin :show="loadingEvents">
+                    <NTimeline v-if="eventRows.length">
+                      <NTimelineItem
+                        v-for="item in eventRows"
+                        :key="item.id"
+                        :type="timelineType(item.eventType) as any"
+                        :title="item.eventName || eventTypeText(item.eventType)"
+                        :time="item.createTime"
+                      >
+                        <div class="timeline-content">
+                          <div>{{ item.eventContent || item.content || '-' }}</div>
+                          <div class="timeline-meta">
+                            操作方：{{ item.operatorTenantNameSnapshot || '-' }} / {{ item.operatorUserName || '-' }}
+                          </div>
+                          <div v-if="eventFileIds(item).length" class="mt-8px">
+                            <BizFileViewer :file-ids="eventFileIds(item)" mode="auto" :max="8" :thumb-size="54" show-name />
+                          </div>
+                        </div>
+                      </NTimelineItem>
+                    </NTimeline>
+                    <NEmpty v-else description="暂无时间线" />
+                  </NSpin>
+                </NTabPane>
+              </NTabs>
+            </NCard>
+          </NSpace>
+
+          <NEmpty v-else description="暂无详情" />
+        </NSpin>
       </NDrawerContent>
     </NDrawer>
 
-    <NModal
-      v-model:show="showRejectModal"
-      preset="card"
-      title="拒单"
-      style="width: 620px"
-    >
-      <NForm label-placement="left" label-width="110">
-        <NFormItem label="拒单原因">
-          <NInput
-            v-model:value="rejectForm.reason"
-            type="textarea"
-            :autosize="{ minRows: 3, maxRows: 6 }"
-            placeholder="请输入拒单原因"
-          />
+    <NModal v-model:show="showRejectModal" preset="card" title="拒绝协作单" :style="{ width: '520px' }">
+      <NForm label-placement="left" label-width="90px">
+        <NFormItem label="拒单原因" required>
+          <NInput v-model:value="rejectForm.reason" type="textarea" placeholder="请输入拒单原因" />
         </NFormItem>
       </NForm>
 
       <template #footer>
         <NSpace justify="end">
           <NButton @click="showRejectModal = false">取消</NButton>
-          <NButton type="error" @click="submitReject">确认拒单</NButton>
+          <NButton type="error" :loading="submittingReject" @click="submitReject">确认拒单</NButton>
         </NSpace>
       </template>
     </NModal>
 
-    <NModal v-model:show="showRejectModal" preset="card" title="驳回" style="width: 620px">
-      <NForm label-placement="left" label-width="110">
-        <NFormItem label="驳回原因">
-          <NInput
-            v-model:value="rejectReason"
-            type="textarea"
-            :autosize="{ minRows: 3, maxRows: 6 }"
-            placeholder="请输入驳回原因"
-          />
+    <NModal v-model:show="showHdReviewModal" preset="card" :title="hdReviewForm.result === 'APPROVE' ? '确认高清图' : '驳回高清图'" :style="{ width: '520px' }">
+      <NForm label-placement="left" label-width="90px">
+        <NFormItem label="审核备注">
+          <NInput v-model:value="hdReviewForm.comment" type="textarea" placeholder="请输入审核备注" />
         </NFormItem>
       </NForm>
 
       <template #footer>
         <NSpace justify="end">
-          <NButton @click="showRejectModal = false">取消</NButton>
-          <NButton type="error" @click="submitReject">
-            确认驳回
+          <NButton @click="showHdReviewModal = false">取消</NButton>
+          <NButton :type="hdReviewForm.result === 'APPROVE' ? 'success' : 'error'" :loading="submittingReview" @click="submitHdReviewResult">
+            {{ hdReviewForm.result === 'APPROVE' ? '确认通过' : '确认驳回' }}
           </NButton>
         </NSpace>
       </template>
     </NModal>
 
+    <NModal v-model:show="showEffectReviewModal" preset="card" :title="effectReviewForm.result === 'APPROVE' ? '审核通过效果图' : '驳回效果图'" :style="{ width: '520px' }">
+      <NForm label-placement="left" label-width="90px">
+        <NFormItem label="审核备注">
+          <NInput v-model:value="effectReviewForm.comment" type="textarea" placeholder="请输入审核备注" />
+        </NFormItem>
+      </NForm>
+
+      <template #footer>
+        <NSpace justify="end">
+          <NButton @click="showEffectReviewModal = false">取消</NButton>
+          <NButton :type="effectReviewForm.result === 'APPROVE' ? 'success' : 'error'" :loading="submittingReview" @click="submitEffectReviewResult">
+            {{ effectReviewForm.result === 'APPROVE' ? '审核通过' : '确认驳回' }}
+          </NButton>
+        </NSpace>
+      </template>
+    </NModal>
+
+    <NModal v-model:show="showBillCreateModal" preset="card" title="创建协作账单" :style="{ width: '560px' }">
+      <NForm label-placement="left" label-width="100px">
+        <NFormItem label="账单金额" required>
+          <NInputNumber v-model:value="billCreateForm.billAmount" :min="0.01" :precision="2" class="w-full" />
+        </NFormItem>
+        <NFormItem label="账单标题">
+          <NInput v-model:value="billCreateForm.billTitle" placeholder="请输入账单标题" />
+        </NFormItem>
+        <NFormItem label="明细名称">
+          <NInput v-model:value="billCreateForm.itemName" placeholder="例如：协作服务费 / 打印费 / 修模费" />
+        </NFormItem>
+        <NFormItem label="明细类型">
+          <NSelect v-model:value="billCreateForm.itemType" :options="billItemTypeOptions" />
+        </NFormItem>
+        <NFormItem label="备注">
+          <NInput v-model:value="billCreateForm.billRemark" type="textarea" />
+        </NFormItem>
+      </NForm>
+
+      <template #footer>
+        <NSpace justify="end">
+          <NButton @click="showBillCreateModal = false">取消</NButton>
+          <NButton type="primary" :loading="submittingBill" @click="submitCreateBill">创建</NButton>
+        </NSpace>
+      </template>
+    </NModal>
+
+    <NModal v-model:show="showBillCancelModal" preset="card" title="作废协作账单" :style="{ width: '520px' }">
+      <NForm label-placement="left" label-width="90px">
+        <NFormItem label="作废原因" required>
+          <NInput v-model:value="billCancelForm.reason" type="textarea" placeholder="请输入作废原因" />
+        </NFormItem>
+      </NForm>
+
+      <template #footer>
+        <NSpace justify="end">
+          <NButton @click="showBillCancelModal = false">取消</NButton>
+          <NButton type="error" :loading="submittingBill" @click="submitCancelBill">确认作废</NButton>
+        </NSpace>
+      </template>
+    </NModal>
+
+    <NModal v-model:show="showVoucherUploadModal" preset="card" title="上传付款凭证" :style="{ width: '620px' }">
+      <NForm label-placement="left" label-width="110px">
+        <NFormItem label="付款金额" required>
+          <NInputNumber v-model:value="voucherUploadForm.paymentAmount" :min="0.01" :precision="2" class="w-full" />
+        </NFormItem>
+        <NFormItem label="付款渠道" required>
+          <NSelect v-model:value="voucherUploadForm.paymentChannel" :options="paymentChannelOptions" />
+        </NFormItem>
+        <NFormItem label="付款人">
+          <NInput v-model:value="voucherUploadForm.payerName" placeholder="请输入付款人" />
+        </NFormItem>
+        <NFormItem label="交易流水号">
+          <NInput v-model:value="voucherUploadForm.transactionNo" placeholder="请输入交易流水号" />
+        </NFormItem>
+        <NFormItem label="付款凭证" required>
+          <BizFileUpload
+            v-model="voucherFileIds"
+            biz-type="COLLAB_ORDER"
+            :biz-id="currentOrderId"
+            file-stage="PAYMENT"
+            file-type="PAYMENT_VOUCHER"
+            :max="10"
+            :accept="imageAccept"
+          />
+        </NFormItem>
+        <NFormItem v-if="voucherFileIds.length" label="已上传">
+          <BizFileViewer :file-ids="voucherFileIds" mode="image" :max="10" :thumb-size="80" show-name />
+        </NFormItem>
+        <NFormItem label="备注">
+          <NInput v-model:value="voucherUploadForm.remark" type="textarea" />
+        </NFormItem>
+      </NForm>
+
+      <template #footer>
+        <NSpace justify="end">
+          <NButton @click="showVoucherUploadModal = false">取消</NButton>
+          <NButton type="primary" :loading="submittingVoucher" @click="submitUploadVoucher">上传</NButton>
+        </NSpace>
+      </template>
+    </NModal>
 
     <NModal
-      v-model:show="showReviewRejectModal"
+      v-model:show="showVoucherReviewModal"
       preset="card"
-      title="审核驳回"
-      style="width: 620px"
+      :title="voucherReviewMode === 'approve' ? '审核通过付款凭证' : '驳回付款凭证'"
+      :style="{ width: '520px' }"
     >
-      <NForm label-placement="left" label-width="110">
-        <NFormItem label="驳回原因">
-          <NInput
-            v-model:value="reviewRejectReason"
-            type="textarea"
-            :autosize="{ minRows: 3, maxRows: 6 }"
-            placeholder="请输入驳回原因"
-          />
+      <NForm label-placement="left" label-width="90px">
+        <NFormItem label="审核备注" :required="voucherReviewMode === 'reject'">
+          <NInput v-model:value="voucherReviewForm.reviewRemark" type="textarea" placeholder="请输入审核备注" />
         </NFormItem>
       </NForm>
 
       <template #footer>
         <NSpace justify="end">
-          <NButton @click="showReviewRejectModal = false">
-            取消
-          </NButton>
-
-          <NButton type="error" @click="submitReviewReject">
-            确认驳回
+          <NButton @click="showVoucherReviewModal = false">取消</NButton>
+          <NButton
+            :type="voucherReviewMode === 'approve' ? 'success' : 'error'"
+            :loading="submittingReview"
+            @click="submitVoucherReview"
+          >
+            {{ voucherReviewMode === 'approve' ? '审核通过' : '确认驳回' }}
           </NButton>
         </NSpace>
       </template>
     </NModal>
-
   </NSpace>
 </template>
+
+<style scoped>
+.page-desc {
+  margin-top: 6px;
+  color: #888;
+  font-size: 13px;
+}
+
+.timeline-content {
+  line-height: 1.6;
+}
+
+.timeline-meta {
+  margin-top: 4px;
+  color: #888;
+  font-size: 12px;
+}
+
+.sync-error {
+  color: #d03050;
+  font-size: 12px;
+  line-height: 1.4;
+  word-break: break-all;
+}
+
+.mt-8px {
+  margin-top: 8px;
+}
+
+.mt-12px {
+  margin-top: 12px;
+}
+
+.mb-8px {
+  margin-bottom: 8px;
+}
+
+.w-full {
+  width: 100%;
+}
+</style>

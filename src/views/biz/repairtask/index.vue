@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {h, onMounted, reactive, ref} from 'vue';
+import {h, onMounted, reactive, ref, VNodeChild} from 'vue';
 import {
   NButton,
   NCard,
@@ -147,9 +147,9 @@ const modelCheckForm = reactive({
 
 
 const columns = [
-  {title: '任务号', key: 'taskNo', width: 160, fixed: 'left'},
-  {title: '订单号', key: 'orderNoSnapshot', width: 160, fixed: 'left'},
-  {title: '客户', key: 'customerNameSnapshot', width: 120, fixed: 'left'},
+  {title: '任务号', key: 'taskNo', width: 160, fixed: 'left' as const},
+  {title: '订单号', key: 'orderNoSnapshot', width: 160, fixed: 'left' as const},
+  {title: '客户', key: 'customerNameSnapshot', width: 120, fixed: 'left' as const},
   {title: '产品', key: 'productNameSnapshot', width: 160},
   {title: '修模师', key: 'assigneeName', width: 120},
   {
@@ -276,9 +276,9 @@ const columns = [
     title: '操作',
     key: 'actions',
     width: 200,
-    fixed: 'right',
+    fixed: 'right' as const,
     render(row: RepairTaskVO) {
-      const buttons = [];
+      const buttons: VNodeChild[] = [];
 
       if (row.status === 'WAIT_CLAIM') {
         buttons.push(

@@ -60,7 +60,7 @@ export function exportCustomerStatementExcel(billId: string | number) {
   return request<any>({
     url: `${BASE_URL}/bill/${billId}/export-excel`,
     method: 'get',
-    responseType: 'blob'
+    responseType: 'blob' as any
   });
 }
 

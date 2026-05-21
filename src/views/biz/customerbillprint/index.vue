@@ -186,7 +186,7 @@ onMounted(loadDetail);
 
             <tbody>
             <tr v-for="(item, index) in items" :key="item.id || index">
-              <td class="center">{{ index + 1 }}</td>
+              <td class="center">{{ Number(index) + 1 }}</td>
               <td>{{ item.orderNoSnapshot || '-' }}</td>
               <td>{{ itemTypeLabel(item.itemType) }}</td>
               <td>{{ item.itemName || '-' }}</td>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {h, onMounted, reactive, ref} from 'vue';
+import {h, onMounted, reactive, ref, VNodeChild} from 'vue';
 import {NButton, NCard, NDataTable, NForm, NFormItem, NInput, NSelect, NSpace, NTag, useMessage} from 'naive-ui';
 import {
   fetchNotificationList,
@@ -147,9 +147,9 @@ const columns = [
     title: '操作',
     key: 'actions',
     width: 160,
-    fixed: 'right',
+    fixed: 'right' as const,
     render(row: NotificationVO) {
-      const buttons = [];
+      const buttons: VNodeChild[] = [];
 
       if (row.readFlag !== '1') {
         buttons.push(

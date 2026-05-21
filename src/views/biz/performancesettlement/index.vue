@@ -16,9 +16,8 @@ import {
   NSelect,
   NSpace,
   NInputNumber,
-  SelectOption,
   NTag,
-  useMessage
+  useMessage, SelectOption
 } from 'naive-ui';
 
 import {
@@ -137,13 +136,13 @@ const pendingQuery = reactive({
   settlementType: 'REPAIR',
   startDateValue: null as number | null,
   endDateValue: Date.now() as number | null,
-  includeUncompleted: false
+  includeUncompleted: null as BooleanSelectValue
 });
 
 const listQuery = reactive({
   pageNum: 1,
   pageSize: 10,
-  settlementNo: '',
+  settlementNo: null as string | null,
   settlementType: '',
   userName: '',
   status: ''
@@ -217,10 +216,30 @@ const statusOptions = [
   {label: '已作废', value: 'CANCELLED'}
 ];
 
+type BooleanSelectValue = 'true' | 'false' | null;
+
 const yesNoOptions = [
-  {label: '否', value: false},
-  {label: '是', value: true}
+  { label: '是', value: 'true' },
+  { label: '否', value: 'false' }
 ];
+
+function routeQueryBooleanSelect(value: unknown): BooleanSelectValue {
+  if (Array.isArray(value)) {
+    value = value[0];
+  }
+
+  if (value === 'true' || value === true) return 'true';
+  if (value === 'false' || value === false) return 'false';
+  return null;
+}
+
+function selectValueToBoolean(value: BooleanSelectValue) {
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  return undefined;
+}
+
+
 
 function money(value?: number) {
   return Number(value || 0).toFixed(2);
@@ -455,7 +474,7 @@ const settlementColumns = [
     title: '结算单号',
     key: 'settlementNo',
     width: 180,
-    fixed: 'left'
+    fixed: 'left' as const
   },
   {
     title: '结算类型',
@@ -533,7 +552,7 @@ const settlementColumns = [
     title: '操作',
     key: 'actions',
     width: 260,
-    fixed: 'right',
+    fixed: 'right' as const,
     render(row: StaffPerformanceSettlementVO) {
       const buttons = [
         h(
@@ -666,7 +685,7 @@ const adjustmentColumns = [
     title: '调整单号',
     key: 'adjustmentNo',
     width: 180,
-    fixed: 'left'
+    fixed: 'left' as const
   },
   {
     title: '业绩类型',
@@ -760,7 +779,7 @@ const adjustmentColumns = [
     title: '操作',
     key: 'actions',
     width: 100,
-    fixed: 'right',
+    fixed: 'right' as const,
     render(row: StaffPerformanceAdjustmentVO) {
       if (row.status === 'ENABLE' && row.settleStatus === 'UNSETTLED') {
         return h(
@@ -792,7 +811,7 @@ async function getPendingList() {
       settlementType: pendingQuery.settlementType,
       startDate: formatDateValue(pendingQuery.startDateValue),
       endDate: formatDateValue(pendingQuery.endDateValue),
-      includeUncompleted: pendingQuery.includeUncompleted
+      includeUncompleted: selectValueToBoolean(pendingQuery.includeUncompleted)
     });
 
     pendingData.value = unwrapData(res) || [];
@@ -824,7 +843,7 @@ async function createSettlementByPending(row: StaffPerformancePendingVO) {
     userId: row.userId,
     startDate: formatDateValue(pendingQuery.startDateValue),
     endDate: formatDateValue(pendingQuery.endDateValue),
-    includeUncompleted: pendingQuery.includeUncompleted,
+    includeUncompleted: selectValueToBoolean(pendingQuery.includeUncompleted),
     remark: '业绩结算中心生成'
   });
 
@@ -1554,9 +1573,10 @@ watch(
         </NFormItem>
 
         <NFormItem label="关联订单ID">
+
           <NInput
-            v-model:value="manualAdjustmentForm.orderId"
-            placeholder="可选，关联订单ID"
+            :value="manualAdjustmentForm.orderId == null ? null : String(manualAdjustmentForm.orderId)"
+            @update:value="value => (manualAdjustmentForm.orderId = value)"
           />
         </NFormItem>
 

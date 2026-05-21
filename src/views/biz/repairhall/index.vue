@@ -24,9 +24,9 @@ const queryParams = reactive({
 });
 
 const columns = [
-  { title: '任务号', key: 'taskNo', width: 160,fixed: 'left' },
-  { title: '订单号', key: 'orderNoSnapshot', width: 160,fixed: 'left' },
-  { title: '客户', key: 'customerNameSnapshot', width: 120,fixed: 'left' },
+  { title: '任务号', key: 'taskNo', width: 160,fixed: 'left' as const },
+  { title: '订单号', key: 'orderNoSnapshot', width: 160,fixed: 'left' as const },
+  { title: '客户', key: 'customerNameSnapshot', width: 120,fixed: 'left' as const },
   { title: '产品', key: 'productNameSnapshot', width: 180 },
   { title: '优先级', key: 'priority', width: 100 },{
     title: '修模截止',
@@ -114,7 +114,7 @@ const columns = [
     title: '操作',
     key: 'actions',
     width: 260,
-    fixed: 'right',
+    fixed: 'right' as const,
     render(row: RepairTaskVO) {
       return h(
         NButton,

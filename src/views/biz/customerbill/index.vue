@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { h, onMounted, reactive, ref } from 'vue';
+import {h, onMounted, reactive, ref, VNodeChild} from 'vue';
 import {
   NAlert,
   NButton,
@@ -394,13 +394,13 @@ const columns = [
     title: '账单号',
     key: 'billNo',
     width: 180,
-    fixed: 'left'
+    fixed: 'left' as const
   },
   {
     title: '客户',
     key: 'customerNameSnapshot',
     width: 140,
-    fixed: 'left'
+    fixed: 'left' as const
   },
   {
     title: '账单类型',
@@ -479,9 +479,9 @@ const columns = [
     title: '操作',
     key: 'actions',
     width: 300,
-    fixed: 'right',
+    fixed: 'right' as const,
     render(row: CustomerBillVO) {
-      const buttons: any[] = [];
+      const buttons: VNodeChild[] = [];
 
       buttons.push(
         h(

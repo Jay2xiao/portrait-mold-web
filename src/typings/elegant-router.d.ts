@@ -27,6 +27,7 @@ declare module "@elegant-router/types" {
     "about": "/about";
     "biz": "/biz";
     "biz_auditorconfig": "/biz/auditorconfig";
+    "biz_collabdashboard": "/biz/collabdashboard";
     "biz_collaborder": "/biz/collaborder";
     "biz_collabordersend": "/biz/collabordersend";
     "biz_collabpartner": "/biz/collabpartner";
@@ -169,6 +170,7 @@ declare module "@elegant-router/types" {
     | "user-center"
     | "about"
     | "biz_auditorconfig"
+    | "biz_collabdashboard"
     | "biz_collaborder"
     | "biz_collabordersend"
     | "biz_collabpartner"

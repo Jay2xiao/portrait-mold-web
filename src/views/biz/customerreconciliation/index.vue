@@ -46,16 +46,17 @@ const loading = ref(false);
 const tableData = ref<CustomerReconciliationSummaryVO[]>([]);
 const total = ref(0);
 
+
 const queryParams = reactive({
   pageNum: 1,
   pageSize: 10,
   customerName: '',
   phone: '',
   settlementType: '',
-  onlyDebt: false,
-  settlementDueOnly: false,
-  unbilledOnly: false,
-  overCreditOnly: false,
+  onlyDebt: 'false' as BooleanSelectValue,
+  settlementDueOnly: 'false' as BooleanSelectValue,
+  unbilledOnly: 'false' as BooleanSelectValue,
+  overCreditOnly: 'false' as BooleanSelectValue,
   periodEndDateValue: Date.now() as number | null
 });
 
@@ -68,10 +69,10 @@ const currentCustomer = ref<CustomerReconciliationSummaryVO | null>(null);
 
 const createBillForm = reactive({
   billType: 'PERIODIC',
-  autoConfirm: false,
+  autoConfirm: 'false' as BooleanSelectValue,
   periodStartDateValue: null as number | null,
   periodEndDateValue: null as number | null,
-  includeBeforeStart: true,
+  includeBeforeStart: 'true' as BooleanSelectValue,
   remark: ''
 });
 
@@ -83,8 +84,8 @@ const settlementTypeOptions = [
 ];
 
 const yesNoOptions = [
-  { label: '否', value: false },
-  { label: '是', value: true }
+  { label: '否', value: 'false' },
+  { label: '是', value: 'true' }
 ];
 
 const billTypeOptions = [
@@ -137,6 +138,23 @@ function payStatusLabel(value?: string) {
   return map[value || ''] || value || '-';
 }
 
+type BooleanSelectValue = 'true' | 'false' | null;
+
+
+function routeQueryBooleanSelect(value: unknown): BooleanSelectValue {
+  if (value === true || value === 'true') {
+    return 'true';
+  }
+
+  if (value === false || value === 'false') {
+    return 'false';
+  }
+
+  return null;
+}
+
+
+
 function unwrapRows(res: any) {
   const data = res?.data || res;
   return data?.rows || [];
@@ -168,7 +186,7 @@ const columns = [
     title: '客户',
     key: 'customerName',
     width: 150,
-    fixed: 'left'
+    fixed: 'left' as const
   },
   {
     title: '电话',
@@ -312,7 +330,7 @@ const columns = [
     title: '操作',
     key: 'actions',
     width: 230,
-    fixed: 'right',
+    fixed: 'right' as const,
     render(row: CustomerReconciliationSummaryVO) {
       return h(NSpace, {}, {
         default: () => [
@@ -407,7 +425,7 @@ const unpaidBillColumns = [
     title: '操作',
     key: 'actions',
     width: 190,
-    fixed: 'right',
+    fixed: 'right' as const,
     render(row: any) {
       return h(
         NSpace,
@@ -458,7 +476,7 @@ function resetQuery() {
   queryParams.customerName = '';
   queryParams.phone = '';
   queryParams.settlementType = '';
-  queryParams.onlyDebt = false;
+  queryParams.onlyDebt = null as BooleanSelectValue;
   queryParams.pageNum = 1;
   getList();
 }
@@ -500,10 +518,10 @@ function openCreateBill(row: CustomerReconciliationSummaryVO) {
         ? 'PERIODIC'
         : 'NORMAL';
 
-  createBillForm.autoConfirm = false;
+  createBillForm.autoConfirm = 'false';
   createBillForm.periodStartDateValue = parseDateToValue(row.currentPeriodStartDate);
   createBillForm.periodEndDateValue = parseDateToValue(row.currentPeriodEndDate);
-  createBillForm.includeBeforeStart = true;
+  createBillForm.includeBeforeStart = 'true';
   createBillForm.remark = '客户对账中心生成本期结算账单';
 
   showCreateBillModal.value = true;
@@ -604,19 +622,19 @@ function applyRouteQuery() {
   const q = route.query;
 
   if ('onlyDebt' in q) {
-    queryParams.onlyDebt = routeQueryBoolean(q.onlyDebt);
+    queryParams.onlyDebt = routeQueryBooleanSelect(q.onlyDebt);
   }
 
   if ('settlementDueOnly' in q) {
-    queryParams.settlementDueOnly = routeQueryBoolean(q.settlementDueOnly);
+    queryParams.settlementDueOnly = routeQueryBooleanSelect(q.settlementDueOnly);
   }
 
   if ('unbilledOnly' in q) {
-    queryParams.unbilledOnly = routeQueryBoolean(q.unbilledOnly);
+    queryParams.unbilledOnly = routeQueryBooleanSelect(q.unbilledOnly);
   }
 
   if ('overCreditOnly' in q) {
-    queryParams.overCreditOnly = routeQueryBoolean(q.overCreditOnly);
+    queryParams.overCreditOnly = routeQueryBooleanSelect(q.overCreditOnly);
   }
 
   queryParams.pageNum = 1;

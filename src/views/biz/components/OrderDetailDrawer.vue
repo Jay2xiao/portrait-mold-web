@@ -18,10 +18,11 @@ import {
 } from 'naive-ui';
 
 import {
-  fetchOrderDetail,
+  fetchOrderFullDetail,
   fetchOrderStageRoutes,
   type BizOrderStageRouteVo
 } from '@/service/api/biz/order';
+
 
 import BizFileThumbs from '@/views/biz/components/BizFileThumbs.vue';
 
@@ -138,7 +139,7 @@ async function load() {
   const currentLoadOrderId = props.orderId;
 
   try {
-    const res = await fetchOrderDetail(currentLoadOrderId);
+    const res = await fetchOrderFullDetail(currentLoadOrderId);
 
     /**
      * 防止请求返回时抽屉已经关闭或切换到了其他订单。
@@ -190,19 +191,28 @@ function normalizeOrderDetail(data: any) {
       repairTasks: data.repairTasks || [],
       printTasks: data.printTasks || [],
       deliveryRecords: data.deliveryRecords || [],
+      rejectRecords: data.rejectRecords || [],
+      timeline: data.timeline || [],
       receivableItems: data.receivableItems || [],
+      billItems: data.billItems || [],
       bills: data.bills || [],
+      paymentAllocations: data.paymentAllocations || [],
       payments: data.payments || [],
       adjustments: data.adjustments || []
     };
   }
 
+
   const {
     repairTasks,
     printTasks,
     deliveryRecords,
+    rejectRecords,
+    timeline,
     receivableItems,
+    billItems,
     bills,
+    paymentAllocations,
     payments,
     adjustments,
     ...orderData
@@ -213,11 +223,16 @@ function normalizeOrderDetail(data: any) {
     repairTasks: repairTasks || [],
     printTasks: printTasks || [],
     deliveryRecords: deliveryRecords || [],
+    rejectRecords: rejectRecords || [],
+    timeline: timeline || [],
     receivableItems: receivableItems || [],
+    billItems: billItems || [],
     bills: bills || [],
+    paymentAllocations: paymentAllocations || [],
     payments: payments || [],
     adjustments: adjustments || []
   };
+
 }
 
 async function loadStageRoutes(orderId: string | number) {

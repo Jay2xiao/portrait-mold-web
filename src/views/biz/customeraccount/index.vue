@@ -125,7 +125,7 @@ const columns = [
     title: '客户',
     key: 'customerNameSnapshot',
     width: 160,
-    fixed: 'left'
+    fixed: 'left' as const
   },
   {
     title: '当前余额',
@@ -177,7 +177,7 @@ const columns = [
     title: '操作',
     key: 'actions',
     width: 180,
-    fixed: 'right',
+    fixed: 'right' as const,
     render(row: CustomerAccountVO) {
       return h(NSpace, {}, {
         default: () => [

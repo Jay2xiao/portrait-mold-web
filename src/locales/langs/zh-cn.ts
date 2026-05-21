@@ -299,7 +299,7 @@ const local: App.I18n.Schema = {
     tool: '系统工具',
     tool_gen: '代码生成',
     about: '关于'
-  },
+  } as any,
   menu: {
     system_tenant: '租户管理',
     system_log: '日志管理',

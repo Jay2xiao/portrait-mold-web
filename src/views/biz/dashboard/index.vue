@@ -154,7 +154,7 @@ const debtColumns = [
     key: 'rank',
     width: 70,
     render(_: DashboardCustomerDebtRankVO, index: number) {
-      return index + 1;
+      return Number(index) + 1;
     }
   },
   {

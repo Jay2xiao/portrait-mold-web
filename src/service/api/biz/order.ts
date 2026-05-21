@@ -315,3 +315,38 @@ export function saveOrderStageRoutes(
     data
   });
 }
+
+export interface BizOrderDetailVo {
+  order?: BizOrderVo;
+  repairTasks?: any[];
+  printTasks?: any[];
+  deliveryRecords?: any[];
+  rejectRecords?: any[];
+  timeline?: any[];
+  receivableItems?: any[];
+  billItems?: any[];
+  bills?: any[];
+  paymentAllocations?: any[];
+  payments?: any[];
+  adjustments?: any[];
+  [key: string]: any;
+}
+
+/**
+ * 订单完整详情。
+ *
+ * 用于订单详情抽屉，包含：
+ * - 订单主信息
+ * - 修模任务
+ * - 打印任务
+ * - 发货记录
+ * - 应收项目
+ * - 账单 / 收款 / 调整项
+ * - 时间线
+ */
+export function fetchOrderFullDetail(id: string | number) {
+  return request<BizOrderDetailVo>({
+    url: `${ORDER_BASE_URL}/${id}/detail`,
+    method: 'get'
+  });
+}

@@ -45,6 +45,7 @@ export interface DataHealthItemVO {
   repairMsg?: string;
   repairTime?: string;
   createTime?: string;
+  repairUserName?: string;
 }
 
 export interface DataHealthDashboardVO {

@@ -83,6 +83,6 @@ export function exportPerformanceSettlementExcel(id: string | number) {
   return request<any>({
     url: `${BASE_URL}/${id}/export-excel`,
     method: 'get',
-    responseType: 'blob'
+    responseType: 'blob' as any
   });
 }

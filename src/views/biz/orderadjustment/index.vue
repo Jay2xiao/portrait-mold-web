@@ -109,19 +109,19 @@ const columns = [
     title: '调整单号',
     key: 'adjustNo',
     width: 180,
-    fixed: 'left'
+    fixed: 'left' as const
   },
   {
     title: '订单号',
     key: 'orderNoSnapshot',
     width: 170,
-    fixed: 'left'
+    fixed: 'left' as const
   },
   {
     title: '客户',
     key: 'customerNameSnapshot',
     width: 140,
-    fixed: 'left'
+    fixed: 'left' as const
   },
   {
     title: '调整类型',
@@ -308,6 +308,11 @@ function handlePageSizeChange(pageSize: number) {
   getList();
 }
 
+function unwrapData<T = any>(res: any): T {
+  return res?.data ?? res;
+}
+
+
 async function handleOrderChange(orderId: string | number) {
   form.currentAmount = 0;
   form.afterAmount = 0;
@@ -316,9 +321,12 @@ async function handleOrderChange(orderId: string | number) {
   if (!orderId) return;
 
   const res = await fetchOrderDetail(orderId);
-  const detail = res.data || res;
 
-  currentReceivableItems.value = detail.receivableItems || [];
+  const orderDetail = unwrapData<any>(res);
+
+  currentReceivableItems.value = Array.isArray(orderDetail?.receivableItems)
+    ? orderDetail.receivableItems
+    : [];
 
   // 默认优先选择修模费
   const repairItem = currentReceivableItems.value.find(item => item.itemType === 'REPAIR_FEE');

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { h, onMounted, reactive, ref } from 'vue';
+import {h, onMounted, reactive, ref, VNodeChild} from 'vue';
 import {
   NButton,
   NCard,
@@ -91,19 +91,19 @@ const columns = [
     title: '任务号',
     key: 'taskNo',
     width: 160,
-    fixed: 'left'
+    fixed: 'left' as const
   },
   {
     title: '订单号',
     key: 'orderNoSnapshot',
     width: 160,
-    fixed: 'left'
+    fixed: 'left' as const
   },
   {
     title: '客户',
     key: 'customerNameSnapshot',
     width: 120,
-    fixed: 'left'
+    fixed: 'left' as const
   },
   {
     title: '产品',
@@ -192,9 +192,9 @@ const columns = [
     title: '操作',
     key: 'actions',
     width: 220,
-    fixed: 'right',
+    fixed: 'right' as const,
     render(row: PrintTaskVO) {
-      const buttons: any[] = [];
+      const buttons: VNodeChild[] = [];
 
       if (row.status === 'WAIT_START') {
         buttons.push(

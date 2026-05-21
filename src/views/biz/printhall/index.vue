@@ -93,7 +93,7 @@ const columns = [
     title: '操作',
     key: 'actions',
     width: 120,
-    fixed: 'right',
+    fixed: 'right' as const,
     render(row: PrintTaskVO) {
       return h(
         NButton,

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {h, onMounted, reactive, ref} from 'vue';
+import {h, onMounted, reactive, ref, VNodeChild} from 'vue';
 
 import {
   NButton,
@@ -106,9 +106,9 @@ function statusTagType(value?: string) {
 }
 
 const columns = [
-  {title: '任务号', key: 'taskNo', width: 160, fixed: 'left'},
-  {title: '订单号', key: 'orderNoSnapshot', width: 160, fixed: 'left'},
-  {title: '客户', key: 'customerNameSnapshot', width: 120, fixed: 'left'},
+  {title: '任务号', key: 'taskNo', width: 160, fixed: 'left' as const},
+  {title: '订单号', key: 'orderNoSnapshot', width: 160, fixed: 'left' as const},
+  {title: '客户', key: 'customerNameSnapshot', width: 120, fixed: 'left' as const},
   {title: '产品', key: 'productNameSnapshot', width: 180},
   {
     title: '状态',
@@ -226,9 +226,9 @@ const columns = [
     title: '操作',
     key: 'actions',
     width: 200,
-    fixed: 'right',
+    fixed: 'right' as const,
     render(row: RepairTaskVO) {
-      const buttons = [];
+      const buttons: VNodeChild[] = [];
 
       if (row.status === 'PREVIEW_REJECTED') {
         buttons.push(

@@ -188,7 +188,7 @@ const columns = [
     title: '操作',
     key: 'actions',
     width: 160,
-    fixed: 'right',
+    fixed: 'right' as const,
     render(row: DataHealthItemVO) {
       const buttons = [
         h(

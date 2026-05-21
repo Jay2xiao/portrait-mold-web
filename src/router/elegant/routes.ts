@@ -69,6 +69,15 @@ export const generatedRoutes: GeneratedRoute[] = [
         }
       },
       {
+        name: 'biz_collabdashboard',
+        path: '/biz/collabdashboard',
+        component: 'view.biz_collabdashboard',
+        meta: {
+          title: 'biz_collabdashboard',
+          i18nKey: 'route.biz_collabdashboard'
+        }
+      },
+      {
         name: 'biz_collaborder',
         path: '/biz/collaborder',
         component: 'view.biz_collaborder',
