@@ -5,6 +5,8 @@ import { claimRepairTask, fetchRepairHallList, type RepairTaskVO } from '@/servi
 
 import BizFileViewer from '@/views/biz/components/BizFileViewer.vue';
 import BizFileThumbs from '@/views/biz/components/BizFileThumbs.vue';
+import RepairTaskDetailDrawer from '@/views/biz/components/RepairTaskDetailDrawer.vue';
+
 import { deadlineTagType, deadlineText } from '@/utils/biz/deadline';
 
 
@@ -14,6 +16,9 @@ const message = useMessage();
 const loading = ref(false);
 const tableData = ref<RepairTaskVO[]>([]);
 const total = ref(0);
+const showDetailDrawer = ref(false);
+const detailTaskId = ref<string | number | undefined>();
+
 
 const queryParams = reactive({
   pageNum: 1,
@@ -24,37 +29,12 @@ const queryParams = reactive({
 });
 
 const columns = [
-  { title: '任务号', key: 'taskNo', width: 160,fixed: 'left' as const },
-  { title: '订单号', key: 'orderNoSnapshot', width: 160,fixed: 'left' as const },
+  { title: '任务号', key: 'taskNo', width: 120,fixed: 'left' as const },
+  { title: '订单号', key: 'orderNoSnapshot', width: 120,fixed: 'left' as const },
   { title: '客户', key: 'customerNameSnapshot', width: 120,fixed: 'left' as const },
-  { title: '产品', key: 'productNameSnapshot', width: 180 },
-  { title: '优先级', key: 'priority', width: 100 },{
-    title: '修模截止',
-    key: 'deadlineTime',
-    width: 180,
-    render(row: RepairTaskVO) {
-      return h(
-        NTag,
-        { type: deadlineTagType(row.deadlineTime, row.timeoutFlag) as any },
-        { default: () => deadlineText(row.deadlineTime, row.timeoutFlag) }
-      );
-    }
-  },
-  {
-    title: '截止时间',
-    key: 'deadlineTime',
-    width: 170
-  },
-  {
-    title: '超时原因',
-    key: 'cancelReason',
-    width: 200,
-    ellipsis: {
-      tooltip: true
-    }
-  },
-  { title: '人工修模费', key: 'quoteManualAmount', width: 120 },
-  { title: '总价', key: 'quoteTotalAmount', width: 100 },
+  { title: '产品', key: 'productNameSnapshot', width: 120 },
+  { title: '优先级', key: 'priority', width: 100 },
+  { title: '修模师费用', key: 'quoteManualAmount', width: 120 },
   {
     title: '状态',
     key: 'status',
@@ -80,51 +60,63 @@ const columns = [
     }
   },
   {
-    title: '备注图',
-    key: 'remarkImageFileIds',
-    width: 90,
+    title: '修模截止',
+    key: 'deadlineTime',
+    width: 180,
     render(row: RepairTaskVO) {
-      if (!row.remarkImageFileIds || row.remarkImageFileIds.length === 0) {
-        return '';
-      }
-      return h(BizFileThumbs, {
-        fileIds: row.remarkImageFileIds,
-        mode: 'image',
-        max: 1,
-        thumbSize: 48
-      });
+      return h(
+        NTag,
+        { type: deadlineTagType(row.deadlineTime, row.timeoutFlag) as any },
+        { default: () => deadlineText(row.deadlineTime, row.timeoutFlag) }
+      );
     }
   },
   {
-    title: 'AI模型',
-    key: 'aiBaseModelFileIds',
-    width: 130,
-    render(row: RepairTaskVO) {
-      if (!row.aiBaseModelFileIds || row.aiBaseModelFileIds.length === 0) {
-        return '';
-      }
-      return h(BizFileThumbs, {
-        fileIds: row.aiBaseModelFileIds,
-        mode: 'download',
-        max: 1
-      });
+    title: '截止时间',
+    key: 'deadlineTime',
+    width: 170
+  },
+  {
+    title: '超时原因',
+    key: 'cancelReason',
+    width: 200,
+    ellipsis: {
+      tooltip: true
     }
   },
   {
     title: '操作',
     key: 'actions',
-    width: 260,
+    width: 180,
     fixed: 'right' as const,
     render(row: RepairTaskVO) {
       return h(
-        NButton,
+        NSpace,
         {
-          size: 'small',
-          type: 'primary',
-          disabled: row.status !== 'WAIT_CLAIM',
-          onClick: () => handleClaim(row)
+          size: 8
         },
-        { default: () => '接单' }
+        {
+          default: () => [
+            h(
+              NButton,
+              {
+                size: 'small',
+                type: 'primary',
+                disabled: row.status !== 'WAIT_CLAIM',
+                onClick: () => handleClaim(row)
+              },
+              { default: () => '接单' }
+            ),
+            h(
+              NButton,
+              {
+                size: 'small',
+                onClick: () => openDetail(row)
+              },
+              { default: () => '详情' }
+            )
+          ]
+        }
       );
     }
   }
@@ -147,6 +139,13 @@ async function handleClaim(row: RepairTaskVO) {
 
   await claimRepairTask(row.id);
   getList();
+}
+
+function openDetail(row: RepairTaskVO) {
+  if (!row.id) return;
+
+  detailTaskId.value = row.id;
+  showDetailDrawer.value = true;
 }
 
 
@@ -189,7 +188,7 @@ onMounted(getList);
         :loading="loading"
         :columns="columns"
         :data="tableData"
-        :scroll-x="3000"
+        :scroll-x="2000"
         :pagination="{
           page: queryParams.pageNum,
           pageSize: queryParams.pageSize,
@@ -201,5 +200,11 @@ onMounted(getList);
         }"
       />
     </NSpace>
+
+    <RepairTaskDetailDrawer
+      v-model:show="showDetailDrawer"
+      :task-id="detailTaskId"
+    />
+
   </NCard>
 </template>

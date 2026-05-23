@@ -79,3 +79,19 @@ export function fetchClearTenant() {
     method: 'get'
   });
 }
+
+export interface TenantInitSyncParams {
+  sourceTenantId: string;
+  syncRoles?: boolean;
+  syncProductTypes?: boolean;
+  overwrite?: boolean;
+}
+
+/** 同步新商户默认初始化配置 */
+export function fetchSyncTenantInitConfig(tenantId: CommonType.IdType, data: TenantInitSyncParams) {
+  return request({
+    url: `/system/tenant/${tenantId}/init/sync`,
+    method: 'post',
+    data
+  });
+}

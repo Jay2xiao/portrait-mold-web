@@ -55,6 +55,9 @@ export interface RepairTaskVO {
   deadlineReminded?: string;
   timeoutFlag?: string;
   timeoutTime?: string;
+  timeoutMinutes?: number;
+
+  timeoutReason?: string;
   cancelType?: string;
   cancelReason?: string;
   cancelTime?: string;
@@ -63,6 +66,14 @@ export interface RepairTaskVO {
   remark?: string;
   createTime?: string;
 }
+
+export interface RepairSubmitPreviewPayload {
+  previewFileIds?: string;
+  previewVideoFileIds?: string;
+  submitRemark?: string;
+  timeoutReason?: string;
+}
+
 
 export interface RepairRejectRecordVO {
   id?: string | number;
@@ -185,7 +196,7 @@ export function reassignRepairTask(id: string | number, data: any) {
   });
 }
 
-export function submitRepairPreview(id: string | number, data: any) {
+export function submitRepairPreview(id: string | number, data: RepairSubmitPreviewPayload) {
   return request<any>({
     url: `/biz/repair-task/${id}/submit-preview`,
     method: 'post',

@@ -2,6 +2,7 @@
 import {h, onMounted, reactive, ref, VNodeChild} from 'vue';
 
 import {
+  NAlert,
   NButton,
   NCard,
   NDataTable,
@@ -31,13 +32,13 @@ import {
 import BizFileUpload from '@/views/biz/components/BizFileUpload.vue';
 import BizFileViewer from '@/views/biz/components/BizFileViewer.vue';
 import BizFileThumbs from '@/views/biz/components/BizFileThumbs.vue';
+import RepairTaskDetailDrawer from '@/views/biz/components/RepairTaskDetailDrawer.vue';
+
 import {deadlineTagType, deadlineText} from '@/utils/biz/deadline';
 import {useRouter} from "vue-router";
 
 
-const router = useRouter();
-
-import { useRoute } from 'vue-router';
+import {useRoute} from 'vue-router';
 
 const route = useRoute();
 
@@ -70,6 +71,9 @@ const statusOptions = [
 
 const showSubmitModal = ref(false);
 const currentTask = ref<RepairTaskVO | null>(null);
+const showDetailDrawer = ref(false);
+const detailTaskId = ref<string | number | undefined>();
+
 const previewFileIdList = ref<Array<string | number>>([]);
 const modelFileIdList = ref<Array<string | number>>([]);
 const modelSelfCheckFileIdList = ref<Array<string | number>>([]);
@@ -80,8 +84,10 @@ const showPreviewModal = ref(false);
 
 const previewForm = reactive({
   previewFileIds: '',
-  submitRemark: ''
+  submitRemark: '',
+  timeoutReason: ''
 });
+
 
 const showModelModal = ref(false);
 const modelForm = reactive({
@@ -105,45 +111,37 @@ function statusTagType(value?: string) {
   return 'default';
 }
 
+function isRepairTimeoutForSubmit(task?: RepairTaskVO | null) {
+  if (!task?.deadlineTime) return false;
+
+  const deadline = new Date(task.deadlineTime).getTime();
+
+  if (Number.isNaN(deadline)) return false;
+
+  return Date.now() > deadline;
+}
+
+function calcPreviewTimeoutMinutes(task?: RepairTaskVO | null) {
+  if (!task?.deadlineTime) return 0;
+
+  const deadline = new Date(task.deadlineTime).getTime();
+
+  if (Number.isNaN(deadline)) return 0;
+
+  const diff = Date.now() - deadline;
+
+  if (diff <= 0) return 0;
+
+  return Math.max(1, Math.ceil(diff / 60000));
+}
+
+
 const columns = [
-  {title: '任务号', key: 'taskNo', width: 160, fixed: 'left' as const},
-  {title: '订单号', key: 'orderNoSnapshot', width: 160, fixed: 'left' as const},
-  {title: '客户', key: 'customerNameSnapshot', width: 120, fixed: 'left' as const},
-  {title: '产品', key: 'productNameSnapshot', width: 180},
-  {
-    title: '状态',
-    key: 'status',
-    width: 120,
-    render(row: RepairTaskVO) {
-      return h(NTag, {}, {default: () => statusLabel(row.status)});
-    }
-  }, {
-    title: '修模截止',
-    key: 'deadlineTime',
-    width: 180,
-    render(row: RepairTaskVO) {
-      return h(
-        NTag,
-        {type: deadlineTagType(row.deadlineTime, row.timeoutFlag) as any},
-        {default: () => deadlineText(row.deadlineTime, row.timeoutFlag)}
-      );
-    }
-  },
-  {
-    title: '截止时间',
-    key: 'deadlineTime',
-    width: 170
-  },
-  {
-    title: '超时原因',
-    key: 'cancelReason',
-    width: 200,
-    ellipsis: {
-      tooltip: true
-    }
-  },
-  {title: '人工修模费', key: 'quoteManualAmount', width: 120},
-  {title: '提交说明', key: 'submitRemark', width: 200},
+  {title: '任务号', key: 'taskNo', width: 100, fixed: 'left' as const},
+  {title: '订单号', key: 'orderNoSnapshot', width: 100, fixed: 'left' as const},
+  {title: '客户', key: 'customerNameSnapshot', width: 100, fixed: 'left' as const},
+  {title: '产品', key: 'productNameSnapshot', width: 100},
+  {title: '修模师费用', key: 'quoteManualAmount', width: 120},
   {
     title: '原图',
     key: 'originalImageFileIds',
@@ -161,71 +159,77 @@ const columns = [
     }
   },
   {
-    title: '备注图',
-    key: 'remarkImageFileIds',
-    width: 90,
+    title: '状态',
+    key: 'status',
+    width: 100,
     render(row: RepairTaskVO) {
-      if (!row.remarkImageFileIds || row.remarkImageFileIds.length === 0) {
-        return '';
-      }
-      return h(BizFileThumbs, {
-        fileIds: row.remarkImageFileIds,
-        mode: 'image',
-        max: 1,
-        thumbSize: 48
-      });
+      return h(NTag, {}, {default: () => statusLabel(row.status)});
     }
   },
   {
-    title: '效果图',
-    key: 'previewFileIds',
-    width: 90,
+    title: '截止时间',
+    key: 'deadlineTime',
+    width: 100
+  }, {
+    title: '修模截止',
+    key: 'deadlineTime',
+    width: 100,
     render(row: RepairTaskVO) {
-      if (!row.previewFileIds || row.previewFileIds.length === 0) {
-        return '';
-      }
-      return h(BizFileThumbs, {
-        fileIds: row.previewFileIds,
-        mode: 'image',
-        max: 1,
-        thumbSize: 48
-      });
+      return h(
+        NTag,
+        {type: deadlineTagType(row.deadlineTime, row.timeoutFlag) as any},
+        {default: () => deadlineText(row.deadlineTime, row.timeoutFlag)}
+      );
     }
   },
   {
-    title: 'AI模型',
-    key: 'aiBaseModelFileIds',
-    width: 160,
+    title: '超时信息',
+    key: 'timeoutInfo',
+    width: 240,
     render(row: RepairTaskVO) {
-      if (!row.aiBaseModelFileIds || row.aiBaseModelFileIds.length === 0) {
-        return '';
+      if (row.timeoutFlag !== '1') {
+        return '-';
       }
-      return h(BizFileThumbs, {
-        fileIds: row.aiBaseModelFileIds,
-        mode: 'download',
-        max: 1
-      });
+
+      return h(
+        NSpace,
+        {
+          vertical: true,
+          size: 4
+        },
+        {
+          default: () => [
+            h(
+              NTag,
+              {
+                type: 'warning',
+                size: 'small',
+                bordered: false,
+                round: true
+              },
+              {
+                default: () => `超时 ${row.timeoutMinutes ?? '-'} 分钟`
+              }
+            ),
+            h(
+              'span',
+              {
+                style: {
+                  color: '#666'
+                }
+              },
+              row.timeoutReason || '-'
+            )
+          ]
+        }
+      );
     }
   },
-  {
-    title: '模型文件',
-    key: 'modelFileIds',
-    width: 130,
-    render(row: RepairTaskVO) {
-      if (!row.modelFileIds || row.modelFileIds.length === 0) {
-        return '';
-      }
-      return h(BizFileThumbs, {
-        fileIds: row.modelFileIds,
-        mode: 'download',
-        max: 1
-      });
-    }
-  },
+  {title: '提交说明', key: 'submitRemark', width: 200},
   {
     title: '操作',
     key: 'actions',
-    width: 200,
+    width: 100,
     fixed: 'right' as const,
     render(row: RepairTaskVO) {
       const buttons: VNodeChild[] = [];
@@ -310,12 +314,12 @@ const columns = [
               type: 'warning',
               onClick: () => openRejectRecords(row)
             },
-            { default: () => '驳回原因' }
+            {default: () => '驳回原因'}
           )
         );
       }
 
-      buttons.push(h(NButton, { size: 'small', onClick: () => openRejectRecords(row) }, { default: () => '驳回记录' }));
+      buttons.push(h(NButton, {size: 'small', onClick: () => openRejectRecords(row)}, {default: () => '驳回记录'}));
 
       if (buttons.length === 0) {
         buttons.push(
@@ -350,15 +354,13 @@ const columns = [
   }
 ];
 
-
 function openDetail(row: RepairTaskVO) {
-  router.push({
-    path: '/repairtaskdetail',
-    query: {
-      id: row.id
-    }
-  });
+  if (!row.id) return;
+
+  detailTaskId.value = row.id;
+  showDetailDrawer.value = true;
 }
+
 
 async function getList() {
   loading.value = true;
@@ -383,11 +385,16 @@ function openSubmitPreview(row: RepairTaskVO) {
   currentTask.value = row;
 
   previewFileIdList.value = [];
+
   previewVideoFileIdList.value = [];
 
   previewForm.submitRemark = '';
+
+  previewForm.timeoutReason = '';
+
   showPreviewModal.value = true;
 }
+
 
 
 async function submitOutput() {
@@ -426,18 +433,32 @@ async function submitPreview() {
     return;
   }
 
+  const isTimeout = isRepairTimeoutForSubmit(currentTask.value);
+
+  if (isTimeout && !previewForm.timeoutReason.trim()) {
+    message.warning('当前修模任务已超时，请填写超时原因');
+    return;
+  }
+
   await submitRepairPreview(currentTask.value.id, {
     previewFileIds: previewFileIdList.value.join(','),
     previewVideoFileIds: previewVideoFileIdList.value.join(','),
-    submitRemark: previewForm.submitRemark
+    submitRemark: previewForm.submitRemark,
+    timeoutReason: isTimeout ? previewForm.timeoutReason.trim() : undefined
   });
 
   message.success('效果图/视频已提交，等待审核');
+
   showPreviewModal.value = false;
   previewFileIdList.value = [];
+
   previewVideoFileIdList.value = [];
+
+  previewForm.timeoutReason = '';
+
   getList();
 }
+
 
 const showRejectModal = ref(false);
 const rejectRecords = ref<RepairRejectRecordVO[]>([]);
@@ -572,7 +593,7 @@ onMounted(() => {
         :loading="loading"
         :columns="columns"
         :data="tableData"
-        :scroll-x="4000"
+        :scroll-x="2000"
         :pagination="{
           page: queryParams.pageNum,
           pageSize: queryParams.pageSize,
@@ -629,6 +650,28 @@ onMounted(() => {
             file-type="REPAIR_PREVIEW_VIDEO"
             accept="video/*"
             :max="10"
+          />
+        </NFormItem>
+
+        <NAlert
+          v-if="isRepairTimeoutForSubmit(currentTask)"
+          type="warning"
+          show-icon
+          style="margin-bottom: 12px"
+        >
+          当前任务已超过修模截止时间，预计超时 {{ calcPreviewTimeoutMinutes(currentTask) }} 分钟。提交效果图前必须填写超时原因。
+        </NAlert>
+
+        <NFormItem
+          v-if="isRepairTimeoutForSubmit(currentTask)"
+          label="超时原因"
+          required
+        >
+          <NInput
+            v-model:value="previewForm.timeoutReason"
+            type="textarea"
+            placeholder="请说明超时原因，例如：原图质量低、客户反复调整、模型复杂度高、设备或网络原因等"
+            :autosize="{ minRows: 3, maxRows: 5 }"
           />
         </NFormItem>
 
@@ -743,6 +786,11 @@ onMounted(() => {
         </NSpace>
       </NSpin>
     </NModal>
+
+    <RepairTaskDetailDrawer
+      v-model:show="showDetailDrawer"
+      :task-id="detailTaskId"
+    />
 
   </NCard>
 </template>

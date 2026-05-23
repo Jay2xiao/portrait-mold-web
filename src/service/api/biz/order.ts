@@ -86,6 +86,10 @@ export interface OrderVO {
   receiverCity: string;
   receiverDistrict: string;
   receiverAddress: string;
+
+  routeSummaryMode?: string;
+  stageRoutes?: BizOrderStageRouteSaveItem[];
+
 }
 
 export type OrderForm = Partial<OrderVO>;
@@ -268,12 +272,14 @@ export interface BizOrderStageRouteVo {
 }
 
 export interface BizOrderStageRouteSaveItem {
+  id?: string | number;
   stageCode: string;
   routeMode: OrderRouteMode | string;
   targetTenantId?: string;
   targetTenantNameSnapshot?: string;
   remark?: string;
 }
+
 
 export interface BizOrderStageRouteSaveBo {
   routes: BizOrderStageRouteSaveItem[];

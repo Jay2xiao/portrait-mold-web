@@ -94,13 +94,24 @@ const form = reactive<AuditorConfigForm>({
 
 const nodeOptions = [
   { label: '修模效果图审核', value: 'REPAIR_PREVIEW_REVIEW' },
+
   { label: '修模模型检测', value: 'REPAIR_MODEL_CHECK' },
+
   { label: '打印检测', value: 'PRINT_QC' },
+
   { label: '修模超时处理', value: 'REPAIR_TIMEOUT' },
+
   { label: '订单发货/交付', value: 'ORDER_DELIVERY' },
+
   { label: '修模任务管理通知', value: 'REPAIR_TASK_MANAGE' },
+
+  { label: '打印任务管理通知', value: 'PRINT_TASK_MANAGE' },
+
+  { label: '打印材料录入通知', value: 'PRINT_MATERIAL_RECORD' },
+
   { label: '只打印模型驳回通知', value: 'PRINT_MODEL_REJECT_NOTIFY' }
 ];
+
 
 const auditorTypeOptions = [
   { label: '角色', value: 'ROLE' },

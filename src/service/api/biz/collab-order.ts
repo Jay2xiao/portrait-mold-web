@@ -81,12 +81,18 @@ export interface CollabOrderVO {
 
   deliveryRemark?: string;
 
+  printModelSourceType?: string;
+  printModelSourceId?: string | number;
+  printModelFileIds?: string;
+
 }
 
 export interface CollabOrderDetailVO {
   order?: CollabOrderVO;
   files?: CollabOrderFileVO[];
+  printSpecs?: CollabPrintSpecVO[];
 }
+
 
 export interface CollabOrderSendBO {
   sourceOrderId?: string | number;
@@ -118,6 +124,31 @@ export interface CollabOrderEventVO {
 
   createTime?: string;
 }
+
+export interface CollabPrintSpecVO {
+  id?: string | number;
+  collabOrderId?: string | number;
+  collabOrderNoSnapshot?: string;
+  senderTenantId?: string;
+  receiverTenantId?: string;
+  heightCm?: number;
+  quantity?: number;
+  estimatedWeightG?: number;
+  estimatedAmount?: number;
+  sortNo?: number;
+  remark?: string;
+  createTime?: string;
+}
+
+export interface CollabPrintSpecParam {
+  heightCm: number;
+  quantity: number;
+  estimatedWeightG?: number | null;
+  estimatedAmount?: number | null;
+  sortNo?: number;
+  remark?: string;
+}
+
 
 export interface CollabPrintStatusSyncParams {
   printStatus: 'WAIT_PRINT' | 'PRINTING' | 'PRINT_COMPLETED';
@@ -290,16 +321,33 @@ export interface SendCollabOrderByStageRouteParams {
   serviceType: string;
 
   /**
-   * RAW_PHOTO / HD_PHOTO / HD_PHOTO_AI_MODEL
+   * RAW_PHOTO / HD_PHOTO / HD_PHOTO_AI_MODEL / PRINT_MODEL_ONLY
    */
   materialPackageType: string;
+
+  /**
+   * MANUAL_UPLOAD / SOURCE_ORDER_REPAIR_MODEL / SOURCE_COLLAB_REPAIR_MODEL
+   */
+  printModelSourceType?: string;
+
+  /**
+   * SOURCE_ORDER_REPAIR_MODEL 时可以为空，由后端自动解析；
+   * SOURCE_COLLAB_REPAIR_MODEL 时填写来源修模协作单 ID。
+   */
+  printModelSourceId?: string | number | null;
 
   senderRepairFeeAmount?: number | null;
   title?: string;
   requirementDesc?: string;
 
   files?: CollabOrderFileParam[];
+
+  /**
+   * 打印规格
+   */
+  printSpecs?: CollabPrintSpecParam[];
 }
+
 
 /**
  * 协作发单源订单列表。

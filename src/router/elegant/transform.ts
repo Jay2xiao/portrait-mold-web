@@ -219,8 +219,6 @@ const routeMap: RouteMap = {
   "monitor_logininfor": "/monitor/logininfor",
   "monitor_online": "/monitor/online",
   "monitor_operlog": "/monitor/operlog",
-  "printhall": "/printhall",
-  "printtask": "/printtask",
   "social-callback": "/social-callback",
   "system": "/system",
   "system_client": "/system/client",

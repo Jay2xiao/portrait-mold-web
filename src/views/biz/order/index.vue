@@ -26,9 +26,11 @@ import {
   deleteOrder,
   fetchOrderList,
   fetchOrderTimeline,
+  type BizOrderStageRouteSaveItem,
+  type BizOrderStageRouteVo,
   type OrderForm,
   type OrderVO,
-  updateOrder
+  updateOrder, fetchOrderStageRoutes
 } from '@/service/api/biz/order';
 
 import {
@@ -37,6 +39,8 @@ import {
   fetchDeliveryRecords,
   type DeliveryRecordVO
 } from '@/service/api/biz/delivery';
+
+import { fetchCollabPartnerList } from '@/service/api/biz/collab';
 
 
 import {fetchCustomerList} from '@/service/api/biz/customer';
@@ -185,6 +189,17 @@ const form = reactive<OrderForm>({
   remark: ''
 });
 
+const stageRoutes = ref<BizOrderStageRouteSaveItem[]>([]);
+
+const routeModeOptions = [
+  { label: '内部执行', value: 'INTERNAL' },
+  { label: '外协执行', value: 'EXTERNAL' },
+  { label: '跳过', value: 'SKIP' }
+];
+
+const collabPartnerOptions = ref<Array<{ label: string; value: string }>>([]);
+
+
 const orderTypeOptions = [
   {label: '只修模', value: 'REPAIR_ONLY'},
   {label: '只打印', value: 'PRINT_ONLY'},
@@ -325,6 +340,134 @@ function financeStatusLabel(value?: string) {
   return financeStatusOptions.find(item => item.value === value)?.label || value || '-';
 }
 
+function stageName(stageCode?: string) {
+  if (stageCode === 'REPAIR') return '修模';
+  if (stageCode === 'PRINT') return '打印';
+  if (stageCode === 'DELIVERY') return '发货';
+  return stageCode || '-';
+}
+
+function buildDefaultStageRoutes(orderType?: string): BizOrderStageRouteSaveItem[] {
+  if (orderType === 'REPAIR_ONLY') {
+    return [
+      {
+        stageCode: 'REPAIR',
+        routeMode: form.repairSource === 'EXTERNAL' ? 'EXTERNAL' : 'INTERNAL'
+      }
+    ];
+  }
+
+  if (orderType === 'PRINT_ONLY') {
+    return [
+      {
+        stageCode: 'PRINT',
+        routeMode: 'INTERNAL'
+      }
+    ];
+  }
+
+  return [
+    {
+      stageCode: 'REPAIR',
+      routeMode: form.repairSource === 'EXTERNAL' ? 'EXTERNAL' : 'INTERNAL'
+    },
+    {
+      stageCode: 'PRINT',
+      routeMode: 'INTERNAL'
+    }
+  ];
+}
+
+function syncStageRoutesByOrderType() {
+  const oldMap = new Map(stageRoutes.value.map(item => [item.stageCode, item]));
+
+  stageRoutes.value = buildDefaultStageRoutes(form.orderType).map(item => {
+    const old = oldMap.get(item.stageCode);
+
+    if (!old) {
+      return item;
+    }
+
+    return {
+      ...item,
+      id: old.id,
+      routeMode: old.routeMode || item.routeMode,
+      targetTenantId: old.targetTenantId,
+      targetTenantNameSnapshot: old.targetTenantNameSnapshot,
+      remark: old.remark
+    };
+  });
+}
+
+function normalizeStageRoutes() {
+  stageRoutes.value = stageRoutes.value.map(item => {
+    if (item.routeMode !== 'EXTERNAL') {
+      return {
+        ...item,
+        targetTenantId: undefined,
+        targetTenantNameSnapshot: undefined
+      };
+    }
+
+    return item;
+  });
+}
+
+function buildStageRoutePayload() {
+  normalizeStageRoutes();
+
+  return stageRoutes.value.map(item => ({
+    id: item.id,
+    stageCode: item.stageCode,
+    routeMode: item.routeMode,
+    targetTenantId: item.routeMode === 'EXTERNAL' ? item.targetTenantId : undefined,
+    targetTenantNameSnapshot: item.routeMode === 'EXTERNAL' ? item.targetTenantNameSnapshot : undefined,
+    remark: item.remark
+  }));
+}
+
+function validateStageRoutes() {
+  if (!stageRoutes.value.length) {
+    message.warning('请配置工序路由');
+    return false;
+  }
+
+  const externalRoute = stageRoutes.value.find(item => item.routeMode === 'EXTERNAL' && !item.targetTenantId);
+
+  if (externalRoute) {
+    message.warning(`工序选择外协执行时，必须选择协作商家`);
+    return false;
+  }
+
+  return true;
+}
+
+function handleStageRouteModeChange(routeItem: BizOrderStageRouteSaveItem, value: string) {
+  routeItem.routeMode = value;
+
+  if (value !== 'EXTERNAL') {
+    routeItem.targetTenantId = undefined;
+    routeItem.targetTenantNameSnapshot = undefined;
+  }
+
+  /*
+   * 兼容旧字段 repairSource：
+   * 修模工序切到外协时，同步 repairSource = EXTERNAL；
+   * 修模工序切回内部时，同步 repairSource = INTERNAL。
+   */
+  if (routeItem.stageCode === 'REPAIR' && value !== 'SKIP') {
+    form.repairSource = value === 'EXTERNAL' ? 'EXTERNAL' : 'INTERNAL';
+  }
+}
+
+function handleStageRoutePartnerChange(routeItem: BizOrderStageRouteSaveItem, value: string) {
+  routeItem.targetTenantId = value;
+
+  const option = collabPartnerOptions.value.find(item => item.value === value);
+  routeItem.targetTenantNameSnapshot = option?.label || '';
+}
+
+
 function businessStatusTagType(value?: string) {
   if (value === 'COMPLETED') return 'success';
   if (value === 'CLOSED') return 'error';
@@ -396,7 +539,7 @@ function goToCollabSend(row: any) {
   }
 
   router.push({
-    path: '/biz/collab/order/send',
+    path: '/xiezuo/collab-order-send',
     query: {
       sourceOrderId: String(row.id)
     }
@@ -814,6 +957,19 @@ async function loadProductTypes() {
   productTypeOptions.value = await fetchProductTypeOptions();
 }
 
+async function loadCollabPartners() {
+  const res = await fetchCollabPartnerList({ status: 'ACCEPTED' } as any);
+  const rows = unwrapRows(res);
+
+  collabPartnerOptions.value = rows
+    .map((item: any) => ({
+      label: item.partnerTenantName || item.targetTenantNameSnapshot || item.applyTenantNameSnapshot || item.partnerName || '',
+      value: item.partnerTenantId || item.targetTenantId || item.applyTenantId || ''
+    }))
+    .filter((item: { label: string; value: string }) => item.label && item.value);
+}
+
+
 async function loadRepairersBySource() {
   const res = await fetchRepairerOptions(form.repairSource || 'INTERNAL');
   const data = unwrapData(res);
@@ -915,8 +1071,18 @@ async function handlePreviewCostRule() {
 }
 
 async function handleRepairSourceChange() {
-  form.repairAssigneeUserId = undefined;
+  const repairRoute = stageRoutes.value.find(item => item.stageCode === 'REPAIR');
 
+  if (repairRoute && repairRoute.routeMode !== 'SKIP') {
+    repairRoute.routeMode = form.repairSource === 'EXTERNAL' ? 'EXTERNAL' : 'INTERNAL';
+
+    if (repairRoute.routeMode !== 'EXTERNAL') {
+      repairRoute.targetTenantId = undefined;
+      repairRoute.targetTenantNameSnapshot = undefined;
+    }
+  }
+
+  form.repairAssigneeUserId = undefined;
   await loadRepairersBySource();
 
   if (form.productType) {
@@ -924,9 +1090,13 @@ async function handleRepairSourceChange() {
   }
 }
 
+
 async function handleOrderTypeChange() {
+  syncStageRoutesByOrderType();
+
   if (!needRepair()) {
     form.repairAssigneeUserId = undefined;
+    form.repairSource = 'INTERNAL';
   } else {
     await loadRepairersBySource();
 
@@ -935,6 +1105,7 @@ async function handleOrderTypeChange() {
     }
   }
 }
+
 
 async function submitResubmitPrintModel() {
   if (!resubmitPrintModelOrder.value?.id) return;
@@ -1031,6 +1202,8 @@ function resetForm() {
   remarkImageFileIds.value = [];
   aiBaseModelFileIds.value = [];
   printInputModelFileIds.value = [];
+  stageRoutes.value = buildDefaultStageRoutes('REPAIR_PRINT');
+
 }
 
 function assignOrderToForm(row: OrderVO) {
@@ -1068,6 +1241,8 @@ async function handleAdd() {
 
   await loadRepairersBySource();
 
+  syncStageRoutesByOrderType();
+
   oldPayStatus.value = 'UNPAID';
 
   modalTitle.value = '新增订单';
@@ -1090,6 +1265,9 @@ async function handleEdit(row: OrderVO) {
     loadRepairersBySource(),
     loadOrderFileIds(row.id)
   ]);
+
+  await loadOrderStageRoutesForEdit(row.id, row.orderType);
+
 
   modalTitle.value = '编辑订单';
   showModal.value = true;
@@ -1121,12 +1299,17 @@ async function handleSubmit() {
     return;
   }
 
+  if (!validateStageRoutes()) {
+    return;
+  }
+
   const submitData = {
     ...form,
     originalImageFileIds: originalImageFileIds.value.join(','),
     remarkImageFileIds: remarkImageFileIds.value.join(','),
     aiBaseModelFileIds: aiBaseModelFileIds.value.join(','),
-    printInputModelFileIds: printInputModelFileIds.value.join(',')
+    printInputModelFileIds: printInputModelFileIds.value.join(','),
+    stageRoutes: buildStageRoutePayload()
   };
 
   if (form.id) {
@@ -1260,6 +1443,30 @@ function businessStatusLabelByRow(row: OrderVO) {
   return businessStatusLabel(row.businessStatus);
 }
 
+async function loadOrderStageRoutesForEdit(orderId?: string | number, orderType?: string) {
+  if (!orderId) {
+    stageRoutes.value = buildDefaultStageRoutes(orderType || form.orderType);
+    return;
+  }
+
+  const res = await fetchOrderStageRoutes(orderId);
+  const rows = unwrapData(res) as BizOrderStageRouteVo[];
+
+  if (!Array.isArray(rows) || rows.length === 0) {
+    stageRoutes.value = buildDefaultStageRoutes(orderType || form.orderType);
+    return;
+  }
+
+  stageRoutes.value = rows.map(item => ({
+    id: item.id,
+    stageCode: item.stageCode || '',
+    routeMode: item.routeMode || 'INTERNAL',
+    targetTenantId: item.targetTenantId,
+    targetTenantNameSnapshot: item.targetTenantNameSnapshot,
+    remark: item.remark
+  }));
+}
+
 
 function applyRouteQuery() {
   const q = route.query;
@@ -1271,10 +1478,15 @@ function applyRouteQuery() {
   queryParams.pageNum = 1;
 }
 
+
 onMounted(() => {
   applyRouteQuery();
   getList();
+  loadCustomers();
+  loadProductTypes();
+  loadCollabPartners();
 });
+
 
 watch(
   () => route.fullPath,
@@ -1287,7 +1499,7 @@ watch(
 </script>
 
 <template>
-  <NCard title="订单管理" :bordered="false">
+  <NCard title="订单管理" :bordered="false" >
     <NSpace vertical :size="16">
       <NForm inline label-placement="left">
         <NFormItem label="订单号">
@@ -1465,6 +1677,67 @@ watch(
                   </NFormItem>
                 </NGridItem>
               </NGrid>
+
+              <NCard title="工序路由" size="small" class="mb-16px">
+                <NAlert type="info" show-icon class="mb-12px">
+                  工序路由决定该订单后续是否可以从协作中心按工序派单。选择“外协执行”时必须选择好友协作商家。
+                </NAlert>
+
+                <NSpace vertical>
+                  <NGrid
+                    v-for="routeItem in stageRoutes"
+                    :key="routeItem.stageCode"
+                    :cols="24"
+                    :x-gap="12"
+                    :y-gap="8"
+                    responsive="screen"
+                  >
+                    <NGridItem :span="4">
+                      <NFormItem label="工序">
+                        <NTag type="info">
+                          {{ stageName(routeItem.stageCode) }}
+                        </NTag>
+                      </NFormItem>
+                    </NGridItem>
+
+                    <NGridItem :span="6">
+                      <NFormItem label="执行方式">
+                        <NSelect
+                          v-model:value="routeItem.routeMode"
+                          :options="routeModeOptions"
+                          :disabled="isPaidLocked"
+                          @update:value="value => handleStageRouteModeChange(routeItem, value)"
+                        />
+                      </NFormItem>
+                    </NGridItem>
+
+                    <NGridItem :span="8">
+                      <NFormItem label="协作商家">
+                        <NSelect
+                          v-model:value="routeItem.targetTenantId"
+                          :options="collabPartnerOptions"
+                          :disabled="isPaidLocked || routeItem.routeMode !== 'EXTERNAL'"
+                          filterable
+                          clearable
+                          placeholder="选择外协执行商家"
+                          @update:value="value => handleStageRoutePartnerChange(routeItem, value)"
+                        />
+                      </NFormItem>
+                    </NGridItem>
+
+                    <NGridItem :span="6">
+                      <NFormItem label="备注">
+                        <NInput
+                          v-model:value="routeItem.remark"
+                          :disabled="isPaidLocked"
+                          placeholder="工序备注"
+                        />
+                      </NFormItem>
+                    </NGridItem>
+                  </NGrid>
+                </NSpace>
+              </NCard>
+
             </NForm>
           </NTabPane>
 

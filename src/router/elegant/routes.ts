@@ -498,24 +498,6 @@ export const generatedRoutes: GeneratedRoute[] = [
     ]
   },
   {
-    name: 'printhall',
-    path: '/printhall',
-    component: 'layout.base$view.printhall',
-    meta: {
-      title: 'printhall',
-      i18nKey: 'route.printhall'
-    }
-  },
-  {
-    name: 'printtask',
-    path: '/printtask',
-    component: 'layout.base$view.printtask',
-    meta: {
-      title: 'printtask',
-      i18nKey: 'route.printtask'
-    }
-  },
-  {
     name: 'social-callback',
     path: '/social-callback',
     component: 'layout.blank$view.social-callback',

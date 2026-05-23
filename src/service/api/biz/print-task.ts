@@ -58,8 +58,76 @@ export interface PrintTaskVO {
   entityWeightPhotoFileIds?: string;
   supportWeightPhotoFileIds?: string;
   materialRecordTime?: string;
+  printSpecs?: PrintTaskSpecVO[];
 
 }
+
+export interface PrintTaskSpecVO {
+  id?: string | number;
+  tenantId?: string;
+  shopId?: string | number;
+  printTaskId?: string | number;
+  orderId?: string | number;
+  orderNoSnapshot?: string;
+
+  sourceCollabOrderId?: string | number;
+  sourceCollabSpecId?: string | number;
+
+  heightCm?: number;
+  quantity?: number;
+
+  estimatedWeightG?: number;
+  estimatedAmount?: number;
+
+  actualEntityWeightG?: number;
+  actualSupportWeightG?: number;
+  actualEntityUnitPrice?: number;
+  actualSupportUnitPrice?: number;
+  actualAmount?: number;
+
+  sortNo?: number;
+  materialRemark?: string;
+  remark?: string;
+}
+
+export interface PrintMaterialRecordSpecParam {
+  id?: string | number;
+  sourceCollabSpecId?: string | number;
+
+  heightCm?: number;
+  quantity?: number;
+
+  estimatedWeightG?: number | null;
+  estimatedAmount?: number | null;
+
+  actualEntityWeightG?: number | null;
+  actualSupportWeightG?: number | null;
+  actualEntityUnitPrice?: number | null;
+  actualSupportUnitPrice?: number | null;
+
+  materialRemark?: string;
+  remark?: string;
+}
+
+export interface PrintMaterialRecordParams {
+  entityWeightG?: number;
+  supportWeightG?: number;
+  entityUnitPrice?: number;
+  supportUnitPrice?: number;
+  basePrintFee?: number;
+  postProcessFee?: number;
+  finalAmount?: number;
+  entityWeightPhotoFileIds?: string;
+  supportWeightPhotoFileIds?: string;
+  remark?: string;
+
+  /**
+   * 如果非空，后端按规格明细计算真实金额；
+   * finalAmount 只作为前端展示，不作为最终可信金额。
+   */
+  printSpecs?: PrintMaterialRecordSpecParam[];
+}
+
 
 export function fetchPrintTaskList(params: PrintTaskQuery) {
   return request<any>({
@@ -154,13 +222,10 @@ export function finishPrintTask(id: string | number, data?: any) {
   });
 }
 
-export function recordPrintMaterial(id: string | number, data: any) {
-  return request<any>({
-    url: `/biz/print-task/${id}/material-record`,
-    method: 'post',
-    data
-  });
+export function recordPrintMaterial(id: string | number, data: PrintMaterialRecordParams) {
+  return request({ url: `/biz/print-task/${id}/material-record`, method: 'post', data });
 }
+
 
 export function resubmitPrintOnlyModel(orderId: string | number, data: any) {
   return request<any>({

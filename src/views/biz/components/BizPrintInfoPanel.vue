@@ -35,6 +35,15 @@ function statusLabel(value?: string) {
   return map[value || ''] || value || '-';
 }
 
+function money(value?: number | string | null) {
+  return Number(value || 0).toFixed(2);
+}
+
+function weight(value?: number | string | null) {
+  return Number(value || 0).toFixed(2);
+}
+
+
 async function load() {
   if (!props.orderId) {
     printTasks.value = [];
@@ -149,6 +158,49 @@ onMounted(load);
               :max="5"
             />
           </NDescriptionsItem>
+
+          <NDescriptionsItem
+            v-if="task.printSpecs && task.printSpecs.length"
+            label="打印规格"
+            :span="2"
+          >
+            <NSpace vertical :size="8">
+              <NCard
+                v-for="(spec, index) in task.printSpecs"
+                :key="spec.id || index"
+                size="small"
+                :bordered="true"
+              >
+                <NSpace vertical :size="4">
+                  <NSpace align="center" wrap>
+                    <NTag type="info" size="small" :bordered="false" round>
+                      规格 {{ index + 1 }}
+                    </NTag>
+
+                    <span>高度：{{ spec.heightCm || '-' }} cm</span>
+                    <span>数量：{{ spec.quantity || 0 }} 个</span>
+                    <span>参考克重：{{ weight(spec.estimatedWeightG) }} g</span>
+                    <span>参考金额：{{ money(spec.estimatedAmount) }} 元</span>
+                  </NSpace>
+
+                  <NSpace align="center" wrap>
+                    <span>实际实体：{{ weight(spec.actualEntityWeightG) }} g</span>
+                    <span>实际支撑：{{ weight(spec.actualSupportWeightG) }} g</span>
+                    <span>实体单价：{{ money(spec.actualEntityUnitPrice) }}</span>
+                    <span>支撑单价：{{ money(spec.actualSupportUnitPrice) }}</span>
+                    <NTag type="success" size="small" :bordered="false" round>
+                      小计：{{ money(spec.actualAmount) }} 元
+                    </NTag>
+                  </NSpace>
+
+                  <div v-if="spec.materialRemark" style="color: #666">
+                    材料备注：{{ spec.materialRemark }}
+                  </div>
+                </NSpace>
+              </NCard>
+            </NSpace>
+          </NDescriptionsItem>
+
 
           <NDescriptionsItem label="打印完成照片">
             <BizFileThumbs

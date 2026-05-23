@@ -1,13 +1,16 @@
 <script setup lang="tsx">
 import { computed, ref } from 'vue';
-import { NButton, NDivider } from 'naive-ui';
+import { NButton, NDivider, NInput, NSpace } from 'naive-ui';
+
 import {
   fetchBatchDeleteTenant,
   fetchGetTenantList,
   fetchSyncTenantConfig,
   fetchSyncTenantDict,
+  fetchSyncTenantInitConfig,
   fetchSyncTenantPackage
 } from '@/service/api/system/tenant';
+
 import { useAppStore } from '@/store/modules/app';
 import { useAuthStore } from '@/store/modules/auth';
 import { useAuth } from '@/hooks/business/auth';
@@ -109,7 +112,7 @@ const { columns, columnChecks, data, getData, getDataByPage, loading, mobilePagi
         key: 'operate',
         title: $t('common.operate'),
         align: 'center',
-        width: 180,
+        width: 240,
         render: row => {
           if (row.tenantId === '000000') return null;
 
@@ -138,6 +141,19 @@ const { columns, columnChecks, data, getData, getDataByPage, loading, mobilePagi
             );
           };
 
+          const initSyncBtn = () => {
+            return (
+              <ButtonIcon
+                text
+                type="success"
+                icon="material-symbols:settings-backup-restore"
+                tooltipContent="同步默认配置"
+                onClick={() => handleSyncTenantInitConfig(row)}
+              />
+            );
+          };
+
+
           const deleteBtn = () => {
             return (
               <ButtonIcon
@@ -155,6 +171,7 @@ const { columns, columnChecks, data, getData, getDataByPage, loading, mobilePagi
 
           if (hasAuth('system:tenant:edit')) buttons.push(editBtn());
           if (hasAuth('system:tenant:edit')) buttons.push(syncBtn());
+          if (hasAuth('system:tenant:edit')) buttons.push(initSyncBtn());
           if (hasAuth('system:tenant:delete')) buttons.push(deleteBtn());
 
           return (
@@ -233,6 +250,75 @@ async function handleSyncTenantPackage(row: Api.System.Tenant) {
   window.$message?.success('同步租户套餐成功');
   await getData();
 }
+
+async function handleSyncTenantInitConfig(row: Api.System.Tenant) {
+  if (!row.tenantId) return;
+
+  const sourceTenantId = ref('');
+
+  window.$dialog?.warning({
+    title: '同步默认配置',
+    content: () => (
+      <NSpace vertical size={12}>
+        <div>
+          将从模板商户同步默认角色、角色权限和产品类型到：
+          <strong> {row.companyName}</strong>
+        </div>
+
+        <div class="text-12px text-gray-500">
+          第一版仅平台管理员使用。同步不会复制用户、客户、订单、任务、财务、协作好友、商家资料和文件。
+        </div>
+
+        <NInput
+          value={sourceTenantId.value}
+          placeholder="请输入模板商户租户编号，例如：100001"
+          onUpdateValue={value => {
+            sourceTenantId.value = value;
+          }}
+        />
+
+        <div class="text-12px text-gray-500">
+          默认模式：只新增缺失项，并补齐缺失的角色权限；已有产品类型不会覆盖。
+        </div>
+      </NSpace>
+    ),
+    positiveText: '确认同步',
+    negativeText: '取消',
+    onPositiveClick: async () => {
+      if (!sourceTenantId.value.trim()) {
+        window.$message?.warning('请输入模板商户租户编号');
+        return false;
+      }
+
+      if (sourceTenantId.value.trim() === row.tenantId) {
+        window.$message?.warning('模板商户不能和目标商户相同');
+        return false;
+      }
+
+      const { error, data } = await fetchSyncTenantInitConfig(row.tenantId!, {
+        sourceTenantId: sourceTenantId.value.trim(),
+        syncRoles: true,
+        syncProductTypes: true,
+        overwrite: false
+      });
+
+      if (error) return false;
+
+      const result = data as any;
+
+      window.$message?.success(
+        `同步完成：新增角色 ${result?.createdRoleCount ?? 0} 个，补齐权限 ${
+          result?.syncedRoleMenuCount ?? 0
+        } 项，新增产品类型 ${result?.createdProductTypeCount ?? 0} 个`
+      );
+
+      await getData();
+
+      return true;
+    }
+  });
+}
+
 
 async function handleExport() {
   download('/system/tenant/export', searchParams.value, `租户列表_${new Date().getTime()}.xlsx`);

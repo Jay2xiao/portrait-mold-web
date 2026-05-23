@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import {h, onMounted, reactive, ref, VNodeChild} from 'vue';
+import { computed, h, onMounted, reactive, ref, VNodeChild } from 'vue';
+
 import {
   NButton,
   NCard,
@@ -19,8 +20,10 @@ import {
   finishPrintTask,
   recordPrintMaterial,
   startPrintTask,
+  type PrintTaskSpecVO,
   type PrintTaskVO
 } from '@/service/api/biz/print-task';
+
 
 import BizFileViewer from '@/views/biz/components/BizFileViewer.vue';
 import BizFileUpload from '@/views/biz/components/BizFileUpload.vue';
@@ -51,6 +54,19 @@ const showMaterialModal = ref(false);
 
 const entityWeightPhotoFileIdList = ref<Array<string | number>>([]);
 const supportWeightPhotoFileIdList = ref<Array<string | number>>([]);
+
+interface MaterialSpecRow extends PrintTaskSpecVO {
+  actualEntityWeightG?: number;       // 原: number | null | undefined
+  actualSupportWeightG?: number;      // 原: number | null | undefined
+  actualEntityUnitPrice?: number;     // 原: number | null | undefined
+  actualSupportUnitPrice?: number;    // 原: number | null | undefined
+  materialRemark?: string;
+}
+
+const materialSpecRows = ref<MaterialSpecRow[]>([]);
+
+const hasMaterialSpecs = computed(() => materialSpecRows.value.length > 0);
+
 
 const materialForm = reactive({
   entityWeightG: 0,
@@ -111,18 +127,6 @@ const columns = [
     width: 180
   },
   {
-    title: '输入模型',
-    key: 'inputModelFileIds',
-    width: 180,
-    render(row: PrintTaskVO) {
-      return h(BizFileThumbs, {
-        fileIds: row.inputModelFileIds,
-        mode: 'download',
-        max: 2
-      });
-    }
-  },
-  {
     title: '完成照片',
     key: 'finishPhotoFileIds',
     width: 120,
@@ -148,45 +152,42 @@ const columns = [
     }
   },
   {
-    title: '预估价',
-    key: 'estimateAmount',
-    width: 100
-  },
-  {
-    title: '实体称重',
-    key: 'entityWeightPhotoFileIds',
-    width: 100,
+    title: '打印规格',
+    key: 'printSpecs',
+    width: 220,
     render(row: PrintTaskVO) {
-      return h(BizFileThumbs, {
-        fileIds: row.entityWeightPhotoFileIds,
-        mode: 'image',
-        max: 1,
-        thumbSize: 48
-      });
+      const specs = row.printSpecs || [];
+
+      if (specs.length === 0) {
+        return '-';
+      }
+
+      return h(
+        NSpace,
+        {
+          vertical: true,
+          size: 4
+        },
+        {
+          default: () =>
+            specs.map((spec, index) =>
+              h(
+                NTag,
+                {
+                  key: spec.id || index,
+                  size: 'small',
+                  type: 'info',
+                  bordered: false,
+                  round: true
+                },
+                {
+                  default: () => `${spec.heightCm || '-'}cm × ${spec.quantity || 0}`
+                }
+              )
+            )
+        }
+      );
     }
-  },
-  {
-    title: '支撑称重',
-    key: 'supportWeightPhotoFileIds',
-    width: 100,
-    render(row: PrintTaskVO) {
-      return h(BizFileThumbs, {
-        fileIds: row.supportWeightPhotoFileIds,
-        mode: 'image',
-        max: 1,
-        thumbSize: 48
-      });
-    }
-  },
-  {
-    title: '开始时间',
-    key: 'startTime',
-    width: 170
-  },
-  {
-    title: '完成时间',
-    key: 'finishTime',
-    width: 170
   },
   {
     title: '操作',
@@ -336,6 +337,15 @@ function openMaterialRecord(row: PrintTaskVO) {
   materialForm.finalAmount = row.finalAmount || 0;
   materialForm.remark = '';
 
+  materialSpecRows.value = (row.printSpecs || []).map(item => ({
+    ...item,
+    actualEntityWeightG: item.actualEntityWeightG ?? 0,
+    actualSupportWeightG: item.actualSupportWeightG ?? 0,
+    actualEntityUnitPrice: item.actualEntityUnitPrice ?? row.entityUnitPrice ?? 0,
+    actualSupportUnitPrice: item.actualSupportUnitPrice ?? row.supportUnitPrice ?? 0,
+    materialRemark: item.materialRemark || ''
+  }));
+
   entityWeightPhotoFileIdList.value = row.entityWeightPhotoFileIds
     ? row.entityWeightPhotoFileIds.split(',')
     : [];
@@ -349,14 +359,119 @@ function openMaterialRecord(row: PrintTaskVO) {
   showMaterialModal.value = true;
 }
 
-function calcFinalAmount() {
-  const entityAmount = Number(materialForm.entityWeightG || 0) * Number(materialForm.entityUnitPrice || 0);
-  const supportAmount = Number(materialForm.supportWeightG || 0) * Number(materialForm.supportUnitPrice || 0);
-  const baseFee = Number(materialForm.basePrintFee || 0);
-  const postFee = Number(materialForm.postProcessFee || 0);
 
-  materialForm.finalAmount = Number((entityAmount + supportAmount + baseFee + postFee).toFixed(2));
+function toNumber(value: unknown) {
+  const result = Number(value || 0);
+
+  return Number.isFinite(result) ? result : 0;
 }
+
+function round2(value: number) {
+  return Number(value.toFixed(2));
+}
+
+function round4(value: number) {
+  return Number(value.toFixed(4));
+}
+
+function calcSpecAmount(row: MaterialSpecRow) {
+  const entityAmount = toNumber(row.actualEntityWeightG) * toNumber(row.actualEntityUnitPrice);
+  const supportAmount = toNumber(row.actualSupportWeightG) * toNumber(row.actualSupportUnitPrice);
+
+  return round2(entityAmount + supportAmount);
+}
+
+function calcFinalAmount() {
+  const baseFee = toNumber(materialForm.basePrintFee);
+  const postFee = toNumber(materialForm.postProcessFee);
+
+  if (hasMaterialSpecs.value) {
+    let entityWeight = 0;
+    let supportWeight = 0;
+    let entityAmount = 0;
+    let supportAmount = 0;
+
+    materialSpecRows.value.forEach(row => {
+      const rowEntityWeight = toNumber(row.actualEntityWeightG);
+      const rowSupportWeight = toNumber(row.actualSupportWeightG);
+      const rowEntityPrice = toNumber(row.actualEntityUnitPrice);
+      const rowSupportPrice = toNumber(row.actualSupportUnitPrice);
+
+      entityWeight += rowEntityWeight;
+      supportWeight += rowSupportWeight;
+      entityAmount += rowEntityWeight * rowEntityPrice;
+      supportAmount += rowSupportWeight * rowSupportPrice;
+    });
+
+    materialForm.entityWeightG = round2(entityWeight);
+    materialForm.supportWeightG = round2(supportWeight);
+    materialForm.entityUnitPrice = entityWeight > 0 ? round4(entityAmount / entityWeight) : 0;
+    materialForm.supportUnitPrice = supportWeight > 0 ? round4(supportAmount / supportWeight) : 0;
+    materialForm.finalAmount = round2(entityAmount + supportAmount + baseFee + postFee);
+
+    return;
+  }
+
+  const entityAmount = toNumber(materialForm.entityWeightG) * toNumber(materialForm.entityUnitPrice);
+  const supportAmount = toNumber(materialForm.supportWeightG) * toNumber(materialForm.supportUnitPrice);
+
+  materialForm.finalAmount = round2(entityAmount + supportAmount + baseFee + postFee);
+}
+
+function validateMaterialSpecs() {
+  if (!hasMaterialSpecs.value) {
+    return true;
+  }
+
+  for (const [index, row] of materialSpecRows.value.entries()) {
+    const entityWeight = toNumber(row.actualEntityWeightG);
+    const supportWeight = toNumber(row.actualSupportWeightG);
+    const entityPrice = toNumber(row.actualEntityUnitPrice);
+    const supportPrice = toNumber(row.actualSupportUnitPrice);
+
+    if (entityWeight + supportWeight <= 0) {
+      message.warning(`第 ${index + 1} 条打印规格至少需要录入实体或支撑材料克数`);
+      return false;
+    }
+
+    if (entityWeight > 0 && entityPrice <= 0) {
+      message.warning(`第 ${index + 1} 条打印规格请填写实体材料单克价格`);
+      return false;
+    }
+
+    if (supportWeight > 0 && supportPrice <= 0) {
+      message.warning(`第 ${index + 1} 条打印规格请填写支撑材料单克价格`);
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function buildMaterialSpecPayload() {
+  if (!hasMaterialSpecs.value) {
+    return undefined;
+  }
+
+  return materialSpecRows.value.map(row => ({
+    id: row.id,
+    sourceCollabSpecId: row.sourceCollabSpecId,
+
+    heightCm: row.heightCm,
+    quantity: row.quantity,
+    estimatedWeightG: row.estimatedWeightG ?? null,
+    estimatedAmount: row.estimatedAmount ?? null,
+
+    actualEntityWeightG: toNumber(row.actualEntityWeightG),
+    actualSupportWeightG: toNumber(row.actualSupportWeightG),
+    actualEntityUnitPrice: toNumber(row.actualEntityUnitPrice),
+    actualSupportUnitPrice: toNumber(row.actualSupportUnitPrice),
+
+    materialRemark: row.materialRemark || '',
+    remark: row.remark || ''
+  }));
+}
+
 
 async function submitMaterialRecord() {
   if (!currentTask.value?.id) return;
@@ -371,11 +486,19 @@ async function submitMaterialRecord() {
     return;
   }
 
+  if (!validateMaterialSpecs()) {
+    return;
+  }
+
+  calcFinalAmount();
+
   await recordPrintMaterial(currentTask.value.id, {
     ...materialForm,
     entityWeightPhotoFileIds: entityWeightPhotoFileIdList.value.join(','),
-    supportWeightPhotoFileIds: supportWeightPhotoFileIdList.value.join(',')
+    supportWeightPhotoFileIds: supportWeightPhotoFileIdList.value.join(','),
+    printSpecs: buildMaterialSpecPayload()
   });
+
 
   message.success('材料录入完成，订单进入待交付');
   showMaterialModal.value = false;
@@ -484,67 +607,198 @@ onMounted(() => {
           />
         </NFormItem>
 
-        <NFormItem label="实体材料克数">
-          <NInputNumber
-            v-model:value="materialForm.entityWeightG"
-            :min="0"
-            style="width: 220px"
-            @update:value="calcFinalAmount"
-          />
-        </NFormItem>
+        <NCard
+          v-if="hasMaterialSpecs"
+          title="按打印规格录入真实材料"
+          size="small"
+          :bordered="true"
+          style="margin-bottom: 12px"
+        >
+          <NSpace vertical :size="12">
+            <NAlert type="warning" show-icon>
+              当前打印任务包含多条打印规格。请按每种高度录入真实实体克数、支撑克数和单克价格。最终金额以后端按真实数据计算为准。
+            </NAlert>
 
-        <NFormItem label="实体单克价格">
-          <NInputNumber
-            v-model:value="materialForm.entityUnitPrice"
-            :min="0"
-            style="width: 220px"
-            @update:value="calcFinalAmount"
-          />
-        </NFormItem>
+            <NCard
+              v-for="(row, index) in materialSpecRows"
+              :key="row.id || index"
+              size="small"
+              :bordered="true"
+            >
+              <template #header>
+                <NSpace align="center">
+                  <NTag type="info" size="small" :bordered="false" round>
+                    规格 {{ index + 1 }}
+                  </NTag>
 
-        <NFormItem label="实体称重照片" required>
-          <BizFileUpload
-            v-model="entityWeightPhotoFileIdList"
-            biz-type="PRINT_TASK"
-            :biz-id="currentTask?.id"
-            :order-id="currentTask?.orderId"
-            :task-id="currentTask?.id"
-            file-stage="PRINT_MATERIAL"
-            file-type="ENTITY_WEIGHT_PHOTO"
-            :max="5"
-          />
-        </NFormItem>
+                  <span>
+            高度：{{ row.heightCm || '-' }} cm，数量：{{ row.quantity || 0 }} 个
+          </span>
 
-        <NFormItem label="支撑材料克数">
-          <NInputNumber
-            v-model:value="materialForm.supportWeightG"
-            :min="0"
-            style="width: 220px"
-            @update:value="calcFinalAmount"
-          />
-        </NFormItem>
+                  <span style="color: #999">
+            参考：{{ row.estimatedWeightG || 0 }}g / {{ row.estimatedAmount || 0 }}元
+          </span>
+                </NSpace>
+              </template>
 
-        <NFormItem label="支撑单克价格">
-          <NInputNumber
-            v-model:value="materialForm.supportUnitPrice"
-            :min="0"
-            style="width: 220px"
-            @update:value="calcFinalAmount"
-          />
-        </NFormItem>
+              <NSpace vertical :size="8">
+                <NSpace :size="12" align="center" wrap>
+                  <NFormItem label="实体克数">
+                    <NInputNumber
+                      v-model:value="row.actualEntityWeightG"
+                      :min="0"
+                      :precision="2"
+                      style="width: 150px"
+                      @update:value="calcFinalAmount"
+                    />
+                  </NFormItem>
 
-        <NFormItem label="支撑称重照片" required>
-          <BizFileUpload
-            v-model="supportWeightPhotoFileIdList"
-            biz-type="PRINT_TASK"
-            :biz-id="currentTask?.id"
-            :order-id="currentTask?.orderId"
-            :task-id="currentTask?.id"
-            file-stage="PRINT_MATERIAL"
-            file-type="SUPPORT_WEIGHT_PHOTO"
-            :max="5"
-          />
-        </NFormItem>
+                  <NFormItem label="实体单价">
+                    <NInputNumber
+                      v-model:value="row.actualEntityUnitPrice"
+                      :min="0"
+                      :precision="4"
+                      style="width: 150px"
+                      @update:value="calcFinalAmount"
+                    />
+                  </NFormItem>
+
+                  <NFormItem label="支撑克数">
+                    <NInputNumber
+                      v-model:value="row.actualSupportWeightG"
+                      :min="0"
+                      :precision="2"
+                      style="width: 150px"
+                      @update:value="calcFinalAmount"
+                    />
+                  </NFormItem>
+
+                  <NFormItem label="支撑单价">
+                    <NInputNumber
+                      v-model:value="row.actualSupportUnitPrice"
+                      :min="0"
+                      :precision="4"
+                      style="width: 150px"
+                      @update:value="calcFinalAmount"
+                    />
+                  </NFormItem>
+
+                  <NFormItem label="小计">
+                    <NTag type="success" :bordered="false" round>
+                      {{ calcSpecAmount(row) }} 元
+                    </NTag>
+                  </NFormItem>
+                </NSpace>
+
+                <NInput
+                  v-model:value="row.materialRemark"
+                  placeholder="该规格材料备注，可选"
+                />
+              </NSpace>
+            </NCard>
+          </NSpace>
+        </NCard>
+
+
+        <template v-if="!hasMaterialSpecs">
+          <!-- 原来的实体材料克数、实体单克价格、支撑材料克数、支撑单克价格 -->
+
+          <NFormItem label="实体材料克数">
+            <NInputNumber
+              v-model:value="materialForm.entityWeightG"
+              :min="0"
+              style="width: 220px"
+              @update:value="calcFinalAmount"
+            />
+          </NFormItem>
+
+          <NFormItem label="实体单克价格">
+            <NInputNumber
+              v-model:value="materialForm.entityUnitPrice"
+              :min="0"
+              style="width: 220px"
+              @update:value="calcFinalAmount"
+            />
+          </NFormItem>
+
+          <NFormItem label="实体称重照片" required>
+            <BizFileUpload
+              v-model="entityWeightPhotoFileIdList"
+              biz-type="PRINT_TASK"
+              :biz-id="currentTask?.id"
+              :order-id="currentTask?.orderId"
+              :task-id="currentTask?.id"
+              file-stage="PRINT_MATERIAL"
+              file-type="ENTITY_WEIGHT_PHOTO"
+              :max="5"
+            />
+          </NFormItem>
+
+          <NFormItem label="支撑材料克数">
+            <NInputNumber
+              v-model:value="materialForm.supportWeightG"
+              :min="0"
+              style="width: 220px"
+              @update:value="calcFinalAmount"
+            />
+          </NFormItem>
+
+          <NFormItem label="支撑单克价格">
+            <NInputNumber
+              v-model:value="materialForm.supportUnitPrice"
+              :min="0"
+              style="width: 220px"
+              @update:value="calcFinalAmount"
+            />
+          </NFormItem>
+
+          <NFormItem label="支撑称重照片" required>
+            <BizFileUpload
+              v-model="supportWeightPhotoFileIdList"
+              biz-type="PRINT_TASK"
+              :biz-id="currentTask?.id"
+              :order-id="currentTask?.orderId"
+              :task-id="currentTask?.id"
+              file-stage="PRINT_MATERIAL"
+              file-type="SUPPORT_WEIGHT_PHOTO"
+              :max="5"
+            />
+          </NFormItem>
+        </template>
+
+        <template v-else>
+          <NFormItem label="汇总实体克数">
+            <NInputNumber
+              v-model:value="materialForm.entityWeightG"
+              disabled
+              style="width: 220px"
+            />
+          </NFormItem>
+
+          <NFormItem label="汇总支撑克数">
+            <NInputNumber
+              v-model:value="materialForm.supportWeightG"
+              disabled
+              style="width: 220px"
+            />
+          </NFormItem>
+
+          <NFormItem label="实体加权单价">
+            <NInputNumber
+              v-model:value="materialForm.entityUnitPrice"
+              disabled
+              style="width: 220px"
+            />
+          </NFormItem>
+
+          <NFormItem label="支撑加权单价">
+            <NInputNumber
+              v-model:value="materialForm.supportUnitPrice"
+              disabled
+              style="width: 220px"
+            />
+          </NFormItem>
+        </template>
 
         <NFormItem label="基础打印费">
           <NInputNumber
@@ -568,8 +822,10 @@ onMounted(() => {
           <NInputNumber
             v-model:value="materialForm.finalAmount"
             :min="0"
+            :disabled="hasMaterialSpecs"
             style="width: 220px"
           />
+
         </NFormItem>
 
         <NFormItem label="备注">

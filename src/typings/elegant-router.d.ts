@@ -73,8 +73,6 @@ declare module "@elegant-router/types" {
     "monitor_logininfor": "/monitor/logininfor";
     "monitor_online": "/monitor/online";
     "monitor_operlog": "/monitor/operlog";
-    "printhall": "/printhall";
-    "printtask": "/printtask";
     "social-callback": "/social-callback";
     "system": "/system";
     "system_client": "/system/client";
@@ -138,8 +136,6 @@ declare module "@elegant-router/types" {
     | "iframe-page"
     | "login"
     | "monitor"
-    | "printhall"
-    | "printtask"
     | "social-callback"
     | "system"
     | "tool"
@@ -212,8 +208,6 @@ declare module "@elegant-router/types" {
     | "monitor_logininfor"
     | "monitor_online"
     | "monitor_operlog"
-    | "printhall"
-    | "printtask"
     | "system_client"
     | "system_config"
     | "system_dept"

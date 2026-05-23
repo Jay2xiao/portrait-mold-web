@@ -43,8 +43,9 @@ import { watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { routeQueryBoolean, routeQueryString } from '@/utils/route-query';
 
+import RepairTaskDetailDrawer from '@/views/biz/components/RepairTaskDetailDrawer.vue';
 
-const router = useRouter();
+
 
 defineOptions({name: 'BizRepairTask'});
 
@@ -116,6 +117,9 @@ const currentTask = ref<RepairTaskVO | null>(null);
 const previewReviewAttachmentFileIdList = ref<Array<string | number>>([]);
 const modelCheckAttachmentFileIdList = ref<Array<string | number>>([]);
 
+const showDetailDrawer = ref(false);
+const detailTaskId = ref<string | number | undefined>();
+
 
 const repairerOptions = ref<any[]>([]);
 
@@ -147,15 +151,15 @@ const modelCheckForm = reactive({
 
 
 const columns = [
-  {title: '任务号', key: 'taskNo', width: 160, fixed: 'left' as const},
-  {title: '订单号', key: 'orderNoSnapshot', width: 160, fixed: 'left' as const},
-  {title: '客户', key: 'customerNameSnapshot', width: 120, fixed: 'left' as const},
-  {title: '产品', key: 'productNameSnapshot', width: 160},
-  {title: '修模师', key: 'assigneeName', width: 120},
+  {title: '任务号', key: 'taskNo', width: 120, fixed: 'left' as const},
+  {title: '订单号', key: 'orderNoSnapshot', width: 120, fixed: 'left' as const},
+  {title: '客户', key: 'customerNameSnapshot', width: 100, fixed: 'left' as const},
+  {title: '产品', key: 'productNameSnapshot', width: 100},
+  {title: '修模师', key: 'assigneeName', width: 100},
   {
     title: '修模截止',
     key: 'deadlineTime',
-    width: 190,
+    width: 120,
     render(row: RepairTaskVO) {
       return h(NSpace, {vertical: true, size: 2}, {
         default: () => [
@@ -170,22 +174,9 @@ const columns = [
     }
   },
   {
-    title: '超时原因',
-    key: 'cancelReason',
-    width: 180,
-    ellipsis: {
-      tooltip: true
-    }
-  },
-  {
-    title: '截止时间',
-    key: 'deadlineTime',
-    width: 170
-  },
-  {
     title: '状态',
     key: 'status',
-    width: 120,
+    width: 100,
     render(row: RepairTaskVO) {
       return h(NTag, {}, {default: () => statusLabel(row.status)});
     }
@@ -206,72 +197,18 @@ const columns = [
       });
     }
   },
-  {
-    title: '备注图',
-    key: 'remarkImageFileIds',
-    width: 90,
-    render(row: RepairTaskVO) {
-      if (!row.remarkImageFileIds || row.remarkImageFileIds.length === 0) {
-        return '';
-      }
-      return h(BizFileThumbs, {
-        fileIds: row.remarkImageFileIds,
-        mode: 'image',
-        max: 1,
-        thumbSize: 48
-      });
-    }
-  },
-  {
-    title: '效果图',
-    key: 'previewFileIds',
-    width: 90,
-    render(row: RepairTaskVO) {
-      if (!row.previewFileIds || row.previewFileIds.length === 0) {
-        return '';
-      }
-      return h(BizFileThumbs, {
-        fileIds: row.previewFileIds,
-        mode: 'image',
-        max: 1,
-        thumbSize: 48
-      });
-    }
-  },
-  {
-    title: 'AI生成模型',
-    key: 'aiBaseModelFileIds',
-    width: 160,
-    render(row: RepairTaskVO) {
-      if (!row.aiBaseModelFileIds || row.aiBaseModelFileIds.length === 0) {
-        return '';
-      }
-      return h(BizFileThumbs, {
-        fileIds: row.aiBaseModelFileIds,
-        mode: 'download',
-        max: 1
-      });
-    }
-  },
-  {
-    title: '模型文件',
-    key: 'modelFileIds',
-    width: 130,
-    render(row: RepairTaskVO) {
-      if (!row.modelFileIds || row.modelFileIds.length === 0) {
-        return '';
-      }
-      return h(BizFileThumbs, {
-        fileIds: row.modelFileIds,
-        mode: 'download',
-        max: 1
-      });
-    }
-  },
+  {title: '总价', key: 'quoteTotalAmount', width: 90},
+  {title: '修模师费用', key: 'quoteManualAmount', width: 90},
   {title: '高清费', key: 'quoteHdAmount', width: 90},
   {title: 'AI费', key: 'quoteAiAmount', width: 90},
-  {title: '人工修模费', key: 'quoteManualAmount', width: 120},
-  {title: '总价', key: 'quoteTotalAmount', width: 90},
+  {
+    title: '超时原因',
+    key: 'cancelReason',
+    width: 180,
+    ellipsis: {
+      tooltip: true
+    }
+  },
   {
     title: '操作',
     key: 'actions',
@@ -432,13 +369,12 @@ async function loadRepairers() {
 }
 
 function openDetail(row: RepairTaskVO) {
-  router.push({
-    path: '/repairtaskdetail',
-    query: {
-      id: row.id
-    }
-  });
+  if (!row.id) return;
+
+  detailTaskId.value = row.id;
+  showDetailDrawer.value = true;
 }
+
 
 async function openAssign(row: RepairTaskVO) {
   currentTask.value = row;
@@ -712,7 +648,7 @@ watch(
         :loading="loading"
         :columns="columns"
         :data="tableData"
-        :scroll-x="3000"
+        :scroll-x="2000"
         :pagination="{
           page: queryParams.pageNum,
           pageSize: queryParams.pageSize,
@@ -1016,6 +952,11 @@ watch(
         </NSpace>
       </NSpin>
     </NModal>
+
+    <RepairTaskDetailDrawer
+      v-model:show="showDetailDrawer"
+      :task-id="detailTaskId"
+    />
 
   </NCard>
 

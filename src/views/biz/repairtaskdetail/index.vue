@@ -100,8 +100,32 @@ onMounted(() => {
         <NDescriptionsItem label="状态">
           <NTag>{{ task.status }}</NTag>
         </NDescriptionsItem>
+
         <NDescriptionsItem label="人工修模费">{{ task.quoteManualAmount }}</NDescriptionsItem>
         <NDescriptionsItem label="总价">{{ task.quoteTotalAmount }}</NDescriptionsItem>
+        <NDescriptionsItem label="截止时间">
+          {{ task.deadlineTime || '-' }}
+        </NDescriptionsItem>
+
+        <NDescriptionsItem label="超时状态">
+          <NTag
+            :type="task.timeoutFlag === '1' ? 'warning' : 'success'"
+            size="small"
+            :bordered="false"
+            round
+          >
+            {{ task.timeoutFlag === '1' ? `已超时 ${task.timeoutMinutes ?? '-'} 分钟` : '未超时' }}
+          </NTag>
+        </NDescriptionsItem>
+
+        <NDescriptionsItem label="超时记录时间">
+          {{ task.timeoutTime || '-' }}
+        </NDescriptionsItem>
+
+        <NDescriptionsItem label="超时原因">
+          {{ task.timeoutReason || '-' }}
+        </NDescriptionsItem>
+
       </NDescriptions>
 
     </NCard>
