@@ -161,6 +161,7 @@ const voucherFileIds = ref<CollabId[]>([]);
 const hdSubmitComment = ref('');
 const effectSubmitComment = ref('');
 
+
 const queryForm = reactive({
   status: '',
   serviceType: '',
@@ -315,7 +316,57 @@ const currentBill = computed<CollabBillVO | null>(() => detail.value?.bill || nu
 const paymentVouchers = computed<CollabPaymentVoucherVO[]>(() =>
   Array.isArray(detail.value?.paymentVouchers) ? detail.value.paymentVouchers : []
 );
-const currentFiles = computed<CollabFileRow[]>(() => (Array.isArray(detail.value?.files) ? detail.value.files : []));
+
+function normalizeCollabFileType(value?: string) {
+  return String(value || '').trim().toUpperCase();
+}
+
+/**
+ * 高清图确认相关附件类型。
+ *
+ * PROCESSED_HD_PHOTO 是协作单附件表里正式保存的类型；
+ * PROCESSED_HD 是旧上传组件里可能残留的类型，先兼容。
+ */
+const hdReviewFileTypes = ['PROCESSED_HD_PHOTO', 'PROCESSED_HD'];
+
+const detailFiles = computed<CollabFileRow[]>(() => {
+  const value: any = detail.value;
+
+  if (!value) {
+    return [];
+  }
+
+  if (Array.isArray(value.files)) {
+    return value.files;
+  }
+
+  if (Array.isArray(value.data?.files)) {
+    return value.data.files;
+  }
+
+  return [];
+});
+
+const currentFiles = computed<CollabFileRow[]>(() => detailFiles.value);
+
+/**
+ * 接单方提交给发单方确认的高清图。
+ */
+const processedHdReviewFiles = computed<CollabFileRow[]>(() => {
+  return currentFiles.value.filter(item => {
+    return hdReviewFileTypes.includes(normalizeCollabFileType(item.fileType)) && item.fileId;
+  });
+});
+
+const processedHdReviewFileIds = computed<CollabId[]>(() => {
+  const ids = processedHdReviewFiles.value
+    .map(item => item.fileId)
+    .filter(item => item !== undefined && item !== null && item !== '')
+    .map(item => String(item));
+
+  return Array.from(new Set(ids));
+});
+
 
 const currentOrderId = computed(() => currentOrder.value?.id);
 const orderStatus = computed(() => currentOrder.value?.status || '');
@@ -545,6 +596,20 @@ const baseColumns: DataTableColumns<CollabOrderRow> = [
           )
         );
       }
+      if (activeTab.value === 'SENT' && row.status === 'WAIT_HD_REVIEW') {
+        buttons.push(
+          h(
+            NButton,
+            {
+              size: 'small',
+              type: 'primary',
+              onClick: () => openHdReviewFromRow(row)
+            },
+            { default: () => '确认高清图' }
+          )
+        );
+      }
+
 
       return h(NSpace, { size: 8 }, { default: () => buttons });
     }
@@ -897,6 +962,14 @@ async function openDetailById(id: CollabId, role: RoleType) {
       paymentVouchers: Array.isArray(data.paymentVouchers) ? data.paymentVouchers : []
     };
 
+
+    console.log('[协作单详情]', data);
+    console.log('[协作单附件 files]', data?.files);
+    console.log(
+      '[接单方提交高清图]',
+      (data?.files || []).filter((item: any) => item.fileType === 'PROCESSED_HD_PHOTO')
+    );
+
     await syncBillingData(id);
     await loadEvents(id);
     initActionForms();
@@ -1072,30 +1145,12 @@ async function submitHdReview() {
   }
 }
 
-function openHdReviewModal(result: 'APPROVE' | 'REJECT') {
+function openHdReviewModal(result: 'APPROVE' | 'REJECT' = 'APPROVE') {
   hdReviewForm.result = result;
   hdReviewForm.comment = '';
   showHdReviewModal.value = true;
 }
 
-async function submitHdReviewResult() {
-  if (!currentOrderId.value) return;
-
-  submittingReview.value = true;
-
-  try {
-    await reviewCollabHd(currentOrderId.value, {
-      result: hdReviewForm.result,
-      comment: hdReviewForm.comment
-    });
-
-    message.success(hdReviewForm.result === 'APPROVE' ? '高清图已确认通过' : '高清图已驳回');
-    showHdReviewModal.value = false;
-    await reloadDetail();
-  } finally {
-    submittingReview.value = false;
-  }
-}
 
 async function submitEffectReview() {
   if (!currentOrderId.value) return;
@@ -1281,6 +1336,61 @@ function confirmSendBill() {
   });
 }
 
+async function submitHdReviewResult() {
+  const id = currentOrderId.value;
+
+  if (!id) {
+    message.warning('协作单ID不能为空');
+    return;
+  }
+
+  if (!hdReviewForm.result) {
+    message.warning('请选择审核结果');
+    return;
+  }
+
+  if (hdReviewForm.result === 'REJECT' && !hdReviewForm.comment.trim()) {
+    message.warning('驳回时请填写驳回原因');
+    return;
+  }
+
+  submittingReview.value = true;
+
+  try {
+    await reviewCollabHd(id, {
+      result: hdReviewForm.result,
+      comment: hdReviewForm.comment
+    });
+
+    message.success(hdReviewForm.result === 'APPROVE' ? '高清图已确认' : '高清图已驳回');
+
+    showHdReviewModal.value = false;
+
+    await reloadDetail(true);
+  } finally {
+    submittingReview.value = false;
+  }
+}
+
+
+const shouldShowProcessedHdBlock = computed(() => {
+  return processedHdReviewFileIds.value.length > 0
+    || ['WAIT_HD_REVIEW', 'HD_REJECTED'].includes(orderStatus.value);
+});
+
+const processedHdBlockTitle = computed(() => {
+  if (orderStatus.value === 'WAIT_HD_REVIEW') {
+    return '接单方提交的高清图';
+  }
+
+  if (orderStatus.value === 'HD_REJECTED') {
+    return '已驳回的高清图';
+  }
+
+  return '处理后的高清图';
+});
+
+
 function openCancelBillModal() {
   billCancelForm.reason = '';
   showBillCancelModal.value = true;
@@ -1421,6 +1531,24 @@ async function submitVoucherReview() {
   }
 }
 
+async function openHdReviewFromRow(row: CollabOrderRow) {
+  if (!row.id) {
+    message.warning('协作单ID不能为空');
+    return;
+  }
+
+  /*
+   * 先打开详情，加载附件。
+   * 因为高清图文件在详情 files 里。
+   */
+  await openDetailById(row.id, 'SENT');
+
+  hdReviewForm.result = 'APPROVE';
+  hdReviewForm.comment = '';
+
+  showHdReviewModal.value = true;
+}
+
 function confirmResyncPayment(row: CollabPaymentVoucherVO) {
   if (!row.id) return;
 
@@ -1548,6 +1676,34 @@ function eventFileIds(row: CollabEventRow): CollabId[] {
 
   return [];
 }
+
+function latestEventOf(eventTypes: string[]) {
+  const list = eventRows.value
+    .filter(item => eventTypes.includes(String(item.eventType || '')))
+    .slice()
+    .sort((a, b) => {
+      const at = new Date(a.createTime || '').getTime();
+      const bt = new Date(b.createTime || '').getTime();
+      return bt - at;
+    });
+
+  return list[0] || null;
+}
+
+const latestHdRejectEvent = computed(() => {
+  return latestEventOf(['HD_REJECT']);
+});
+
+const latestHdSubmitEvent = computed(() => {
+  return latestEventOf(['HD_SUBMIT']);
+});
+
+const hdRejectReason = computed(() => {
+  const event = latestHdRejectEvent.value;
+
+  return event?.eventContent || event?.content || '';
+});
+
 
 function unwrapData<T = any>(res: any): T {
   return res?.data ?? res;
@@ -1759,21 +1915,25 @@ function deliveryStatusText(value?: string) {
 
 function fileTypeText(value?: string) {
   const map: Record<string, string> = {
-    RAW_PHOTO: '原始照片',
-    HD_PHOTO: '高清照片',
-    AI_MODEL_FILE: 'AI模型',
-    PROCESSED_HD: '处理后高清图',
-    EFFECT: '修模效果图',
+    RAW_PHOTO: '原图',
+    REMARK_IMAGE: '备注图',
+    HD_PHOTO: '高清图',
+    PROCESSED_HD_PHOTO: '接单方处理高清图',
+    AI_MODEL_FILE: 'AI模型文件',
+    REPAIR_EFFECT_IMAGE: '修模效果图',
+    PRINT_MODEL_FILE: '打印模型文件',
+    PRINT_MODEL_ARCHIVE: '打印模型压缩包',
     DELIVERY_ATTACHMENT: '发货附件',
     PAYMENT_VOUCHER: '付款凭证',
-    REMARK_IMAGE: '备注图',
-    OTHER: '其他'
+    PAYMENT_QR: '收款码'
   };
+
   return value ? map[value] || value : '-';
 }
 
+
 function isImageFileType(value?: string) {
-  return ['RAW_PHOTO', 'HD_PHOTO', 'PROCESSED_HD', 'EFFECT', 'DELIVERY_ATTACHMENT', 'PAYMENT_VOUCHER', 'REMARK_IMAGE'].includes(value || '');
+  return ['RAW_PHOTO', 'HD_PHOTO', 'PROCESSED_HD', 'EFFECT', 'DELIVERY_ATTACHMENT', 'PAYMENT_VOUCHER', 'REMARK_IMAGE','REPAIR_EFFECT_IMAGE','PROCESSED_HD_PHOTO'].includes(value || '');
 }
 
 function eventTypeText(value?: string) {
@@ -1975,12 +2135,53 @@ function timelineType(value?: string) {
               </NDescriptions>
             </NCard>
 
-            <CollabBillingPanel
-              v-if="detail"
-              :detail="detail"
-              :role="activeTab === 'SENT' ? 'sender' : 'receiver'"
-              @refresh="handleBillingRefresh"
-            />
+            <NCard
+              v-if="shouldShowProcessedHdBlock"
+              title="接单方提交的高清图"
+              size="small"
+            >
+              <NSpace vertical :size="12">
+                <NAlert
+                  v-if="orderStatus === 'WAIT_HD_REVIEW'"
+                  type="warning"
+                  show-icon
+                >
+                  接单方已提交处理后的高清图，请确认是否通过。通过后协作单将进入修模流程；驳回后接单方需要重新处理高清图。
+                </NAlert>
+
+                <NAlert
+                  v-else-if="orderStatus === 'HD_REJECTED'"
+                  type="error"
+                  show-icon
+                >
+                  高清图已被发单方驳回，接单方需要重新处理后再次提交。
+                </NAlert>
+
+                <BizFileViewer
+                  v-if="processedHdReviewFileIds.length"
+                  :file-ids="processedHdReviewFileIds"
+                  mode="image"
+                  :max="20"
+                  :thumb-size="96"
+                  show-name
+                />
+
+                <NEmpty
+                  v-else
+                  description="暂无接单方提交的高清图"
+                />
+
+                <NSpace v-if="canReviewHd">
+                  <NButton
+                    type="primary"
+                    @click="openHdReviewModal('APPROVE')"
+                  >
+                    确认 / 驳回高清图
+                  </NButton>
+                </NSpace>
+              </NSpace>
+            </NCard>
+
 
             <NCard title="处理动作" size="small">
               <NSpace vertical :size="16">
@@ -1993,6 +2194,34 @@ function timelineType(value?: string) {
                   <NButton type="error" ghost @click="openRejectModal(currentOrder)">拒单</NButton>
                 </NSpace>
 
+                <NCard
+                  v-if="isReceivedRole && orderStatus === 'HD_REJECTED'"
+                  title="上次提交的高清图"
+                  size="small"
+                >
+                  <NSpace vertical :size="12">
+                    <NAlert type="error" show-icon>
+                      发单方已驳回高清图，请根据驳回原因重新处理后提交。
+                      <template v-if="hdRejectReason">
+                        驳回原因：{{ hdRejectReason }}
+                      </template>
+                    </NAlert>
+
+                    <BizFileViewer
+                      v-if="processedHdReviewFileIds.length"
+                      :file-ids="processedHdReviewFileIds"
+                      mode="image"
+                      :max="20"
+                      show-name
+                    />
+
+                    <NEmpty
+                      v-else
+                      description="未找到上次提交的高清图"
+                    />
+                  </NSpace>
+                </NCard>
+
                 <NCard v-if="canSubmitHd" title="提交处理后的高清图" embedded size="small">
                   <NForm label-placement="left" label-width="120px">
                     <NFormItem label="高清图文件" required>
@@ -2001,10 +2230,11 @@ function timelineType(value?: string) {
                         biz-type="COLLAB_ORDER"
                         :biz-id="currentOrderId"
                         file-stage="COLLAB_PROCESS"
-                        file-type="PROCESSED_HD"
+                        file-type="PROCESSED_HD_PHOTO"
                         :max="10"
                         :accept="imageAccept"
                       />
+
                     </NFormItem>
                     <NFormItem v-if="processedHdFileIds.length" label="已上传">
                       <BizFileViewer :file-ids="processedHdFileIds" mode="image" :max="10" :thumb-size="80" show-name />
@@ -2018,12 +2248,6 @@ function timelineType(value?: string) {
                   </NForm>
                 </NCard>
 
-                <NCard v-if="canReviewHd" title="高清图确认" embedded size="small">
-                  <NSpace>
-                    <NButton type="success" @click="openHdReviewModal('APPROVE')">确认通过</NButton>
-                    <NButton type="error" ghost @click="openHdReviewModal('REJECT')">驳回</NButton>
-                  </NSpace>
-                </NCard>
 
                 <NCard v-if="canSubmitEffect" title="提交修模效果图" embedded size="small">
                   <NForm label-placement="left" label-width="120px">
@@ -2182,23 +2406,6 @@ function timelineType(value?: string) {
       </template>
     </NModal>
 
-    <NModal v-model:show="showHdReviewModal" preset="card" :title="hdReviewForm.result === 'APPROVE' ? '确认高清图' : '驳回高清图'" :style="{ width: '520px' }">
-      <NForm label-placement="left" label-width="90px">
-        <NFormItem label="审核备注">
-          <NInput v-model:value="hdReviewForm.comment" type="textarea" placeholder="请输入审核备注" />
-        </NFormItem>
-      </NForm>
-
-      <template #footer>
-        <NSpace justify="end">
-          <NButton @click="showHdReviewModal = false">取消</NButton>
-          <NButton :type="hdReviewForm.result === 'APPROVE' ? 'success' : 'error'" :loading="submittingReview" @click="submitHdReviewResult">
-            {{ hdReviewForm.result === 'APPROVE' ? '确认通过' : '确认驳回' }}
-          </NButton>
-        </NSpace>
-      </template>
-    </NModal>
-
     <NModal v-model:show="showEffectReviewModal" preset="card" :title="effectReviewForm.result === 'APPROVE' ? '审核通过效果图' : '驳回效果图'" :style="{ width: '520px' }">
       <NForm label-placement="left" label-width="90px">
         <NFormItem label="审核备注">
@@ -2324,6 +2531,77 @@ function timelineType(value?: string) {
         </NSpace>
       </template>
     </NModal>
+
+    <NModal
+      v-model:show="showHdReviewModal"
+      preset="card"
+      title="确认高清图"
+      style="width: 720px"
+    >
+      <NSpace vertical :size="12">
+        <NAlert type="info" show-icon>
+          请查看接单方提交的高清图。确认通过后，接单方将进入内部修模流程；如果驳回，接单方需要重新处理并提交。
+        </NAlert>
+        <div style="color: #999; font-size: 12px">
+          调试：高清图文件ID：{{ processedHdReviewFileIds.join(',') || '-' }}
+        </div>
+
+        <NCard title="接单方提交的高清图" size="small">
+          <BizFileViewer
+            v-if="processedHdReviewFileIds.length"
+            :file-ids="processedHdReviewFileIds"
+            mode="image"
+            :max="20"
+            :thumb-size="96"
+            show-name
+          />
+
+          <NEmpty
+            v-else
+            description="暂无高清图文件"
+          />
+        </NCard>
+
+        <NForm label-placement="left" label-width="90">
+          <NFormItem label="审核结果" required>
+            <NSelect
+              v-model:value="hdReviewForm.result"
+              :options="[
+            { label: '确认通过', value: 'APPROVE' },
+            { label: '驳回重做', value: 'REJECT' }
+          ]"
+              style="width: 220px"
+            />
+          </NFormItem>
+
+          <NFormItem
+            :label="hdReviewForm.result === 'REJECT' ? '驳回原因' : '审核备注'"
+            :required="hdReviewForm.result === 'REJECT'"
+          >
+            <NInput
+              v-model:value="hdReviewForm.comment"
+              type="textarea"
+              placeholder="通过可填写备注；驳回时请填写原因"
+            />
+          </NFormItem>
+        </NForm>
+
+        <NSpace justify="end">
+          <NButton @click="showHdReviewModal = false">
+            取消
+          </NButton>
+
+          <NButton
+            type="primary"
+            :loading="submittingReview"
+            @click="submitHdReviewResult"
+          >
+            提交审核
+          </NButton>
+        </NSpace>
+      </NSpace>
+    </NModal>
+
   </NSpace>
 </template>
 

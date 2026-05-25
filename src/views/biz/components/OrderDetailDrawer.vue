@@ -255,7 +255,7 @@ async function goToCollabSendByOrder() {
   close();
 
   await router.push({
-    path: '/biz/collab/order/send',
+    path: '/xiezuo/collab-order-send',
     query: {
       sourceOrderId: String(orderId)
     }
@@ -272,7 +272,7 @@ async function goToCollabSendByRoute(routeItem: BizOrderStageRouteVo) {
   close();
 
   await router.push({
-    path: '/biz/collab/order/send',
+    path: '/xiezuo/collab-order-send',
     query: {
       sourceOrderId: String(orderId),
       routeIds: String(routeItem.id)
@@ -288,7 +288,7 @@ async function goToCollabOrder(routeItem: BizOrderStageRouteVo) {
   close();
 
   await router.push({
-    path: '/biz/collab/order',
+    path: '/xiezuo/collab-order',
     query: {
       tab: 'SENT',
       collabOrderId: String(routeItem.collabOrderId)

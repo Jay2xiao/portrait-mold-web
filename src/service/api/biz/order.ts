@@ -90,6 +90,41 @@ export interface OrderVO {
   routeSummaryMode?: string;
   stageRoutes?: BizOrderStageRouteSaveItem[];
 
+  sourceBizType?: string;
+  sourceBizId?: string | number;
+  sourceBizNo?: string;
+  sourceTenantId?: string;
+  sourceTenantNameSnapshot?: string;
+
+  /**
+   * 交付方式：EXPRESS / SELF_PICKUP / LOCAL_DELIVERY
+   */
+  deliveryType?: string;
+
+  /**
+   * 快递公司
+   */
+  expressCompany?: string;
+
+  /**
+   * 快递单号
+   */
+  trackingNo?: string;
+
+  /**
+   * 发货/交付时间
+   */
+  deliveryTime?: string;
+
+  /**
+   * 完成时间
+   */
+  completeTime?: string;
+
+  collabSendable?: boolean;
+  pendingExternalRouteCount?: number;
+  dispatchedExternalRouteCount?: number;
+
 }
 
 export type OrderForm = Partial<OrderVO>;

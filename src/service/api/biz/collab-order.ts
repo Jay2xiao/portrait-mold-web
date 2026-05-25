@@ -85,6 +85,19 @@ export interface CollabOrderVO {
   printModelSourceId?: string | number;
   printModelFileIds?: string;
 
+  sourceProductNameSnapshot?: string;
+  sourceProductTypeSnapshot?: string;
+  sourceQuantitySnapshot?: number;
+  sourcePrioritySnapshot?: string;
+  sourceExpectedDeliveryTime?: string;
+  sourceOrderRemarkSnapshot?: string;
+
+  receiverDeliveryRequired?: string;
+  deliveryTypeSnapshot?: string;
+  receiverNameSnapshot?: string;
+  receiverPhoneSnapshot?: string;
+  receiverAddressSnapshot?: string;
+
 }
 
 export interface CollabOrderDetailVO {
@@ -346,6 +359,12 @@ export interface SendCollabOrderByStageRouteParams {
    * 打印规格
    */
   printSpecs?: CollabPrintSpecParam[];
+
+  /**
+   * 是否由接单方发货：1是0否
+   */
+  receiverDeliveryRequired?: string;
+
 }
 
 

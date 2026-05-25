@@ -5,6 +5,7 @@ import {
   NButton,
   NCard,
   NDataTable,
+  NDropdown,
   NForm,
   NFormItem,
   NGrid,
@@ -41,6 +42,7 @@ import {
 } from '@/service/api/biz/delivery';
 
 import { fetchCollabPartnerList } from '@/service/api/biz/collab';
+import { submitCollabHdReview } from '@/service/api/biz/collab-order';
 
 
 import {fetchCustomerList} from '@/service/api/biz/customer';
@@ -98,6 +100,11 @@ function openOrderDetail(row: OrderVO) {
   detailOrderId.value = row.id;
   showOrderDetailDrawer.value = true;
 }
+const showHdSubmitModal = ref(false);
+const currentHdOrder = ref<OrderVO | null>(null);
+const hdSubmitFileIds = ref<Array<string | number>>([]);
+const hdSubmitComment = ref('');
+const hdSubmitting = ref(false);
 
 
 const deliveryProofFileIdList = ref<Array<string | number>>([]);
@@ -218,22 +225,26 @@ const payStatusOptions = [
 ];
 
 const businessStatusOptions = [
-  {label: '待修模', value: 'WAIT_REPAIR'},
-  {label: '修模中', value: 'REPAIRING'},
-  {label: '待效果图审核', value: 'WAIT_PREVIEW_REVIEW'},
-  {label: '修模驳回', value: 'REPAIR_REJECTED'},
-  {label: '待上传模型文件', value: 'WAIT_MODEL_UPLOAD'},
-  {label: '待模型检测', value: 'WAIT_MODEL_CHECK'},
-  {label: '待打印审核', value: 'WAIT_PRINT_QC'},
-  {label: '待打印', value: 'WAIT_PRINT'},
-  {label: '打印中', value: 'PRINTING'},
-  {label: '待材料录入', value: 'WAIT_MATERIAL_RECORD'},
-  {label: '待发货', value: 'WAIT_DELIVERY'},
-  {label: '已完成', value: 'COMPLETED'},
-  {label: '已关闭', value: 'CLOSED'},
-  {label: '已发货/已交付', value: 'DELIVERED'},
-  {label: '已完成', value: 'COMPLETED'}
+  { label: '高清处理中', value: 'HD_PROCESSING' },
+  { label: '高清图返工', value: 'HD_REWORK' },
+  { label: '待发单方确认高清图', value: 'WAIT_HD_REVIEW' },
+
+  { label: '待修模', value: 'WAIT_REPAIR' },
+  { label: '修模中', value: 'REPAIRING' },
+  { label: '待效果图审核', value: 'WAIT_PREVIEW_REVIEW' },
+  { label: '修模驳回', value: 'REPAIR_REJECTED' },
+  { label: '待上传模型文件', value: 'WAIT_MODEL_UPLOAD' },
+  { label: '待模型检测', value: 'WAIT_MODEL_CHECK' },
+  { label: '待打印审核', value: 'WAIT_PRINT_QC' },
+  { label: '待打印', value: 'WAIT_PRINT' },
+  { label: '打印中', value: 'PRINTING' },
+  { label: '待材料录入', value: 'WAIT_MATERIAL_RECORD' },
+  { label: '待发货', value: 'WAIT_DELIVERY' },
+  { label: '已发货/已交付', value: 'DELIVERED' },
+  { label: '已完成', value: 'COMPLETED' },
+  { label: '已关闭', value: 'CLOSED' }
 ];
+
 
 const financeStatusOptions = [
   {label: '待收款', value: 'WAIT_RECEIVE'},
@@ -321,7 +332,9 @@ function orderTypeLabel(value?: string) {
 }
 
 function productTypeLabel(value?: string) {
-  return productTypeOptions.value.find(item => item.value === value)?.label || value || '-';
+  if (!value) return '-';
+
+  return productTypeOptions.value.find(item => String(item.value) === String(value))?.label || '-';
 }
 
 function repairSourceLabel(value?: string) {
@@ -471,11 +484,22 @@ function handleStageRoutePartnerChange(routeItem: BizOrderStageRouteSaveItem, va
 function businessStatusTagType(value?: string) {
   if (value === 'COMPLETED') return 'success';
   if (value === 'CLOSED') return 'error';
-  if (value === 'REPAIR_REJECTED') return 'warning';
-  if (value === 'REPAIRING' || value === 'PRINTING') return 'info';
-  if (value === 'WAIT_PRINT_QC' || value === 'WAIT_PREVIEW_REVIEW' || value === 'WAIT_MODEL_CHECK') return 'warning';
+
+  if (['HD_REWORK', 'REPAIR_REWORK', 'REPAIR_REJECTED'].includes(String(value))) {
+    return 'warning';
+  }
+
+  if (['WAIT_HD_REVIEW', 'WAIT_DELIVERY'].includes(String(value))) {
+    return 'info';
+  }
+
+  if (['HD_PROCESSING', 'REPAIRING', 'PRINTING'].includes(String(value))) {
+    return 'primary';
+  }
+
   return 'default';
 }
+
 
 function payStatusTagType(value?: string) {
   if (value === 'PAID') return 'success';
@@ -533,6 +557,132 @@ function hasExternalRoute(row: any) {
   return ['PARTIAL_EXTERNAL', 'ALL_EXTERNAL'].includes(getRouteSummaryMode(row));
 }
 
+function isFinalOrderStatus(status?: string) {
+  return ['COMPLETED', 'CLOSED'].includes(String(status || ''));
+}
+
+function canSendCollab(row: OrderVO) {
+  return !isCollabInternalOrder(row)
+    && hasExternalRoute(row)
+    && !['COMPLETED', 'CLOSED', 'DELIVERED'].includes(String(row.businessStatus || ''));
+}
+
+function canAssignRepairer(row: OrderVO) {
+  return row.orderType !== 'PRINT_ONLY'
+    && row.repairSource !== 'EXTERNAL'
+    && ['WAIT_REPAIR', 'REPAIRING', 'REPAIR_REWORK', 'REPAIR_REJECTED'].includes(String(row.businessStatus || ''))
+    && !row.repairUserId;
+}
+
+function canDelivery(row: OrderVO) {
+  return row.businessStatus === 'WAIT_DELIVERY';
+}
+
+function canComplete(row: OrderVO) {
+  return row.businessStatus === 'DELIVERED';
+}
+
+function canResubmitPrintModel(row: OrderVO) {
+  return row.orderType === 'PRINT_ONLY'
+    && ['WAIT_MODEL_UPLOAD', 'PRINT_QC_REJECTED'].includes(String(row.businessStatus || ''));
+}
+
+function canEditOrder(row: OrderVO) {
+  return !isCollabInternalOrder(row)
+    && !isFinalOrderStatus(row.businessStatus)
+    && row.businessStatus !== 'DELIVERED';
+}
+
+function canDeleteOrder(row: OrderVO) {
+  return !isCollabInternalOrder(row)
+    && row.payStatus !== 'PAID'
+    && ['WAIT_REPAIR', 'WAIT_MODEL_UPLOAD', 'CLOSED'].includes(String(row.businessStatus || ''));
+}
+
+function canShowDeliveryRecords(row: OrderVO) {
+  const status = String(row.businessStatus || '');
+
+  return ['WAIT_DELIVERY', 'DELIVERED', 'COMPLETED'].includes(status)
+    || Boolean(row.expressCompany)
+    || Boolean(row.trackingNo)
+    || Boolean(row.deliveryTime);
+}
+
+function canSubmitHd(row: OrderVO) {
+  return isCollabInternalOrder(row)
+    && ['HD_PROCESSING', 'HD_REWORK'].includes(String(row.businessStatus || ''))
+    && Boolean(row.sourceBizId);
+}
+
+function isWaitingHdReview(row: OrderVO) {
+  return isCollabInternalOrder(row)
+    && row.businessStatus === 'WAIT_HD_REVIEW';
+}
+
+
+function isCollabInternalOrder(row: Partial<OrderVO>) {
+  return row.sourceBizType === 'COLLAB_ORDER';
+}
+
+function buildMoreActionOptions(row: OrderVO) {
+  const options: any[] = [];
+
+  if (canShowDeliveryRecords(row)) {
+    options.push({
+      label: '发货记录',
+      key: 'deliveryRecords'
+    });
+  }
+
+  if (canEditOrder(row)) {
+    options.push({
+      label: '编辑',
+      key: 'edit'
+    });
+  }
+
+  options.push({
+    label: '日志',
+    key: 'timeline'
+  });
+
+  if (canDeleteOrder(row)) {
+    options.push({
+      label: '删除',
+      key: 'delete',
+      props: {
+        style: 'color: #d03050;'
+      }
+    });
+  }
+
+  return options;
+}
+
+function handleMoreOrderAction(key: string, row: OrderVO) {
+  if (key === 'deliveryRecords') {
+    openDeliveryRecords(row);
+    return;
+  }
+
+  if (key === 'edit') {
+    handleEdit(row);
+    return;
+  }
+
+  if (key === 'timeline') {
+    handleTimeline(row);
+    return;
+  }
+
+  if (key === 'delete') {
+    if (window.confirm('确认删除该订单吗？')) {
+      handleDelete(row);
+    }
+  }
+}
+
+
 function goToCollabSend(row: any) {
   if (!row?.id) {
     return;
@@ -583,6 +733,10 @@ const columns = [
     key: 'productType',
     width: 130,
     render(row: OrderVO) {
+      if (isCollabInternalOrder(row)) {
+        return '-';
+      }
+
       return productTypeLabel(row.productType);
     }
   },
@@ -779,10 +933,55 @@ const columns = [
     width: 210,
     fixed: 'right' as const,
     render(row: OrderVO) {
-
       const buttons: VNodeChild[] = [];
 
-      if (row.businessStatus === 'WAIT_DELIVERY') {
+      /**
+       * 详情：所有订单都显示
+       */
+      buttons.push(
+        h(
+          NButton,
+          {
+            size: 'small',
+            onClick: () => openOrderDetail(row)
+          },
+          { default: () => '详情' }
+        )
+      );
+
+      if (canSubmitHd(row)) {
+        buttons.push(
+          h(
+            NButton,
+            {
+              size: 'small',
+              type: 'primary',
+              onClick: () => openHdSubmitModal(row)
+            },
+            { default: () => '提交高清图' }
+          )
+        );
+      }
+
+      if (isWaitingHdReview(row)) {
+        buttons.push(
+          h(
+            NTag,
+            {
+              size: 'small',
+              type: 'warning',
+              bordered: false
+            },
+            { default: () => '待发单方确认高清图' }
+          )
+        );
+      }
+
+
+      /**
+       * 状态主操作
+       */
+      if (canDelivery(row)) {
         buttons.push(
           h(
             NButton,
@@ -791,36 +990,12 @@ const columns = [
               type: 'primary',
               onClick: () => openDelivery(row)
             },
-            {default: () => '发货'}
+            { default: () => '发货' }
           )
         );
       }
 
-      buttons.push(h(
-          NButton,
-          {
-            size: 'small',
-            onClick: () => openOrderDetail(row)
-          },
-          {default: () => '详情'}
-        )
-      );
-
-      if (hasExternalRoute(row)) {
-        buttons.push(
-          h(
-            NButton,
-            {
-              size: 'small',
-              type: 'primary',
-              onClick: () => goToCollabSend(row)
-            },
-            { default: () => '发起协作' }
-          )
-        );
-      }
-
-      if (row.businessStatus === 'DELIVERED') {
+      if (canComplete(row)) {
         buttons.push(
           h(
             NPopconfirm,
@@ -835,7 +1010,7 @@ const columns = [
                     size: 'small',
                     type: 'success'
                   },
-                  {default: () => '完成'}
+                  { default: () => '完成' }
                 ),
               default: () => '确认该订单已完成吗？'
             }
@@ -843,24 +1018,7 @@ const columns = [
         );
       }
 
-      if (row.orderType !== 'PRINT_ONLY' && row.payStatus !== 'PAID') {
-        buttons.push(
-          h(
-            NButton,
-            {
-              size: 'small',
-              type: 'primary',
-              onClick: () => openAssignRepairer(row)
-            },
-            {default: () => '指定修模师'}
-          )
-        );
-      }
-
-      if (
-        row.orderType === 'PRINT_ONLY'
-        && (row.businessStatus === 'WAIT_MODEL_UPLOAD' || row.businessStatus === 'PRINT_QC_REJECTED')
-      ) {
+      if (canResubmitPrintModel(row)) {
         buttons.push(
           h(
             NButton,
@@ -874,63 +1032,65 @@ const columns = [
         );
       }
 
-      buttons.push(
-        h(
-          NButton,
-          {
-            size: 'small',
-            onClick: () => openDeliveryRecords(row)
-          },
-          {default: () => '发货记录'}
-        )
-      );
+      if (canSendCollab(row)) {
+        buttons.push(
+          h(
+            NButton,
+            {
+              size: 'small',
+              type: 'primary',
+              onClick: () => goToCollabSend(row)
+            },
+            { default: () => '发起协作' }
+          )
+        );
+      }
 
+      if (canAssignRepairer(row)) {
+        buttons.push(
+          h(
+            NButton,
+            {
+              size: 'small',
+              type: 'primary',
+              onClick: () => openAssignRepairer(row)
+            },
+            { default: () => '指定修模师' }
+          )
+        );
+      }
 
-      buttons.push(
-        h(
-          NButton,
-          {
-            size: 'small',
-            type: 'primary',
-            onClick: () => handleEdit(row)
-          },
-          {default: () => '编辑'}
-        )
-      );
-      buttons.push(
-        h(
-          NButton,
-          {
-            size: 'small',
-            onClick: () => handleTimeline(row)
-          },
-          {default: () => '日志'}
-        )
-      );
-      buttons.push(
-        h(
-          NPopconfirm,
-          {
-            onPositiveClick: () => handleDelete(row)
-          },
-          {
-            trigger: () =>
-              h(
-                NButton,
-                {
-                  size: 'small',
-                  type: 'error'
-                },
-                {default: () => '删除'}
-              ),
-            default: () => '确认删除该订单吗？'
-          }
-        )
-      );
+      const moreOptions = buildMoreActionOptions(row);
+
+      if (moreOptions.length > 0) {
+        buttons.push(
+          h(
+            NDropdown,
+            {
+              trigger: 'click',
+              options: moreOptions,
+              onSelect: key => handleMoreOrderAction(String(key), row)
+            },
+            {
+              default: () =>
+                h(
+                  NButton,
+                  {
+                    size: 'small'
+                  },
+                  { default: () => '更多' }
+                )
+            }
+          )
+        );
+      }
 
       return h(
         NSpace,
-        {},
+        {
+          size: 6,
+          wrap: true
+        },
         {
           default: () => buttons
         }
@@ -1131,6 +1291,45 @@ function openResubmitPrintModel(row: OrderVO) {
   resubmitPrintModelFileIds.value = [];
   resubmitPrintModelForm.remark = '';
   showResubmitPrintModelModal.value = true;
+}
+
+function openHdSubmitModal(row: OrderVO) {
+  if (!row.sourceBizId) {
+    message.warning('当前订单缺少来源协作单ID');
+    return;
+  }
+
+  currentHdOrder.value = row;
+  hdSubmitFileIds.value = [];
+  hdSubmitComment.value = '';
+  showHdSubmitModal.value = true;
+}
+
+async function submitHdFiles() {
+  if (!currentHdOrder.value?.sourceBizId) {
+    message.warning('当前订单缺少来源协作单ID');
+    return;
+  }
+
+  if (hdSubmitFileIds.value.length === 0) {
+    message.warning('请上传处理后的高清图');
+    return;
+  }
+
+  hdSubmitting.value = true;
+
+  try {
+    await submitCollabHdReview(currentHdOrder.value.sourceBizId, {
+      fileIds: hdSubmitFileIds.value,
+      comment: hdSubmitComment.value
+    });
+
+    message.success('高清图已提交，等待发单方确认');
+    showHdSubmitModal.value = false;
+    await getList();
+  } finally {
+    hdSubmitting.value = false;
+  }
 }
 
 
@@ -2334,6 +2533,60 @@ watch(
           <NButton type="primary" @click="submitResubmitPrintModel">提交检测</NButton>
         </NSpace>
       </template>
+    </NModal>
+
+    <NModal
+      v-model:show="showHdSubmitModal"
+      preset="card"
+      title="提交高清图"
+      style="width: 640px"
+    >
+      <NSpace vertical :size="12">
+        <NAlert type="info" show-icon>
+          当前订单来自协作单。请上传处理后的高清图，提交后将由发单方确认。
+        </NAlert>
+
+        <NFormItem label="处理后的高清图" required>
+          <BizFileUpload
+            v-model="hdSubmitFileIds"
+            biz-type="COLLAB_ORDER"
+            file-stage="HD_REVIEW"
+            file-type="PROCESSED_HD_PHOTO"
+            :max="20"
+            accept="image/*"
+          />
+        </NFormItem>
+
+        <BizFileViewer
+          v-if="hdSubmitFileIds.length"
+          :file-ids="hdSubmitFileIds"
+          mode="image"
+          :max="20"
+          show-name
+        />
+
+        <NFormItem label="提交说明">
+          <NInput
+            v-model:value="hdSubmitComment"
+            type="textarea"
+            placeholder="可填写高清处理说明"
+          />
+        </NFormItem>
+
+        <NSpace justify="end">
+          <NButton @click="showHdSubmitModal = false">
+            取消
+          </NButton>
+
+          <NButton
+            type="primary"
+            :loading="hdSubmitting"
+            @click="submitHdFiles"
+          >
+            提交高清图
+          </NButton>
+        </NSpace>
+      </NSpace>
     </NModal>
 
   </NCard>

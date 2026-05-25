@@ -79,6 +79,12 @@
                           {{ routeStatusText(item.routeStatus) }}
                         </NTag>
                       </NSpace>
+                      <div
+                        v-if="item.rejectReason || item.lastErrorMsg"
+                        class="route-desc text-warning"
+                      >
+                        上次拒单原因：{{ item.rejectReason || item.lastErrorMsg }}
+                      </div>
 
                       <div class="route-desc">
                         目标商家：{{ item.targetTenantNameSnapshot || '-' }}
@@ -158,6 +164,26 @@
                 placeholder="请输入修模、打印、发货等协作要求"
               />
             </NFormItem>
+
+            <NFormItem label="发货方式">
+              <NCheckbox
+                :checked="form.receiverDeliveryRequired === '1'"
+                @update:checked="checked => {
+      form.receiverDeliveryRequired = checked ? '1' : '0';
+    }"
+              >
+                由接单方直接发货给客户
+              </NCheckbox>
+            </NFormItem>
+
+            <NAlert
+              v-if="form.receiverDeliveryRequired === '1'"
+              type="warning"
+              show-icon
+            >
+              勾选后，系统会把源订单收件人、电话、地址同步给接单商家，用于接单方直接发货。
+            </NAlert>
+
           </NForm>
         </NCard>
 
@@ -591,6 +617,7 @@ const form = reactive({
 
   senderRepairFeeAmount: null as number | null,
   title: '',
+  receiverDeliveryRequired: '0',
   requirementDesc: ''
 });
 
@@ -951,10 +978,14 @@ async function loadStageRoutes(orderId: CollabId, defaultSelectedKeys: string[] 
 
 function canSelectRoute(item: OrderStageRouteVO) {
   if (!item) return false;
-  if (item.collabOrderId) return false;
+
   if (!item.targetTenantId) return false;
+
+  if (item.collabOrderId) return false;
+
   return ['PLANNED', 'WAIT_TRIGGER', undefined, null].includes(item.routeStatus as any);
 }
+
 
 function routeIdKey(value?: CollabId) {
   return value === undefined || value === null ? '' : String(value);
@@ -1169,6 +1200,7 @@ async function submit() {
       requirementDesc: form.requirementDesc,
 
       files: buildFiles(),
+      receiverDeliveryRequired: form.receiverDeliveryRequired,
       printSpecs: buildPrintSpecsPayload()
     };
 
@@ -1184,7 +1216,7 @@ async function submit() {
     message.success('协作单已发送');
 
     router.push({
-      path: '/biz/collab/order',
+      path: '/xiezuo/collab-order',
       query: createdId
         ? {
           tab: 'SENT',
