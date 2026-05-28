@@ -19,6 +19,7 @@ import {
   NPopconfirm,
   NSelect,
   NSpace,
+  NSpin,
   NTag,
   useMessage
 } from 'naive-ui';
@@ -28,8 +29,19 @@ import {
   confirmCustomerBill,
   fetchCustomerBillDetail,
   fetchCustomerBillList,
+  type CustomerBillItemVO,
   type CustomerBillVO
 } from '@/service/api/biz/customer-bill';
+
+import {
+  fetchCollabBillDetail,
+  fetchCollabBillList,
+  type CollabBillVO
+} from '@/service/api/biz/collab-bill';
+import { buildSentCollabBillListParams } from '@/service/api/biz/collab-bill-query';
+import { buildCollabOrderDetailQuery } from '@/service/api/biz/collab-bill-detail-link';
+import { buildCollabMerchantOptions } from '@/service/api/biz/collab-partner-options';
+import { fetchCollabPartnerList } from '@/service/api/biz/collab';
 
 import {
   payCustomerBill,
@@ -52,10 +64,11 @@ import { refundPayment } from '@/service/api/biz/refund';
 import CustomerBillPrintDrawer from '@/views/biz/components/CustomerBillPrintDrawer.vue';
 
 import { watch } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { routeQueryBoolean, routeQueryString } from '@/utils/route-query';
 
 const route = useRoute();
+const router = useRouter();
 
 
 import { fetchCustomerList } from '@/service/api/biz/customer';
@@ -74,6 +87,14 @@ const tableData = ref<CustomerBillVO[]>([]);
 const total = ref(0);
 
 const customerOptions = ref<any[]>([]);
+const collabMerchantOptions = ref<any[]>([]);
+
+const collabBillLoading = ref(false);
+const collabBillTableData = ref<CollabBillVO[]>([]);
+const collabBillTotal = ref(0);
+const showCollabBillDetailDrawer = ref(false);
+const collabBillDetailLoading = ref(false);
+const collabBillDetail = ref<CollabBillVO | null>(null);
 
 const showBalanceOffsetModal = ref(false);
 const currentAccount = ref<CustomerAccountVO | null>(null);
@@ -107,6 +128,15 @@ const queryParams = reactive({
   billStatus: '',
   unpaidOnly: false,
   overdue: false
+});
+
+const collabBillQueryParams = reactive({
+  pageNum: 1,
+  pageSize: 10,
+  keyword: '',
+  counterpartyTenantId: undefined as string | undefined,
+  payStatus: '',
+  billStatus: ''
 });
 
 const showDetailDrawer = ref(false);
@@ -181,6 +211,87 @@ function money(value?: number) {
   return Number(value || 0).toFixed(2);
 }
 
+function displayValue(value?: string | number | null) {
+  if (value === undefined || value === null || value === '') return '-';
+  return String(value);
+}
+
+function decimalValue(value?: string | number | null, digits = 2) {
+  if (value === undefined || value === null || value === '') return '-';
+  const num = Number(value);
+  if (Number.isNaN(num)) return String(value);
+  return num.toFixed(digits);
+}
+
+function itemTypeLabel(value?: string) {
+  if (value === 'REPAIR_FEE') return '修模费';
+  if (value === 'PRINT_FEE') return '打印费';
+  if (value === 'DELIVERY_FEE') return '发货费';
+  if (value === 'ADJUSTMENT') return '调整项';
+  if (value === 'DISCOUNT') return '优惠';
+  if (value === 'OTHER_FEE') return '其他费用';
+  return value || '-';
+}
+
+function renderRepairBillItemDetail(row: CustomerBillItemVO) {
+  if (!row.repairPreviewFileIds) {
+    return h('span', { class: 'muted-text' }, '暂无修模效果图');
+  }
+
+  return h(
+    NSpace,
+    { vertical: true, size: 6 },
+    {
+      default: () => [
+        h('span', { class: 'muted-text' }, '修模后效果图'),
+        h(BizFileThumbs, {
+          fileIds: row.repairPreviewFileIds,
+          max: 6,
+          thumbSize: 56,
+          mode: 'image'
+        })
+      ]
+    }
+  );
+}
+
+function renderPrintSpecLine(spec: NonNullable<CustomerBillItemVO['printSpecs']>[number], index: number) {
+  const parts = [
+    `规格${index + 1}`,
+    `${decimalValue(spec.heightCm)}cm`,
+    `数量${spec.quantity || 1}`,
+    `实体${decimalValue(spec.actualEntityWeightG)}g × ${decimalValue(spec.actualEntityUnitPrice, 4)}`,
+    `支撑${decimalValue(spec.actualSupportWeightG)}g × ${decimalValue(spec.actualSupportUnitPrice, 4)}`,
+    `小计${decimalValue(spec.actualAmount)}元`
+  ];
+  return h('div', { class: 'bill-print-spec-line' }, parts.join('，'));
+}
+
+function renderPrintBillItemDetail(row: CustomerBillItemVO) {
+  const specs = row.printSpecs || [];
+  if (!specs.length) {
+    return h('span', { class: 'muted-text' }, '暂无打印规格明细');
+  }
+
+  return h(
+    NSpace,
+    { vertical: true, size: 4 },
+    {
+      default: () => specs.map((spec, index) => renderPrintSpecLine(spec, index))
+    }
+  );
+}
+
+function renderBillItemDetail(row: CustomerBillItemVO) {
+  if (row.itemType === 'REPAIR_FEE') {
+    return renderRepairBillItemDetail(row);
+  }
+  if (row.itemType === 'PRINT_FEE') {
+    return renderPrintBillItemDetail(row);
+  }
+  return h('span', { class: 'muted-text' }, row.remark || '-');
+}
+
 function payStatusLabel(value?: string) {
   return payStatusOptions.find(item => item.value === value)?.label || value || '-';
 }
@@ -202,8 +313,110 @@ function billStatusTagType(value?: string) {
   return 'warning';
 }
 
+function collabBillStatusLabel(value?: string) {
+  const map: Record<string, string> = {
+    DRAFT: '草稿',
+    SENT: '已发送',
+    CANCELLED: '已作废'
+  };
+
+  return map[value || ''] || value || '-';
+}
+
+function collabBillStatusTagType(value?: string) {
+  if (value === 'SENT') return 'success';
+  if (value === 'CANCELLED') return 'error';
+  return 'warning';
+}
+
+function parseCollabBillItems(row?: CollabBillVO | null) {
+  const raw = (row as any)?.itemsJson || (row as any)?.billItemsJson;
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw;
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+const billItemDetailColumns = [
+  { title: '订单号', key: 'orderNoSnapshot', width: 160 },
+  {
+    title: '产品名称',
+    key: 'productName',
+    width: 150,
+    render(row: CustomerBillItemVO) {
+      return displayValue(row.productName);
+    }
+  },
+  {
+    title: '产品类型',
+    key: 'productTypeName',
+    width: 120,
+    render(row: CustomerBillItemVO) {
+      return row.productTypeName || row.productType || '-';
+    }
+  },
+  {
+    title: '费用类型',
+    key: 'itemType',
+    width: 110,
+    render(row: CustomerBillItemVO) {
+      return itemTypeLabel(row.itemType);
+    }
+  },
+  { title: '费用名称', key: 'itemName', width: 130 },
+  {
+    title: '费用说明',
+    key: 'billItemDetail',
+    minWidth: 420,
+    render(row: CustomerBillItemVO) {
+      return renderBillItemDetail(row);
+    }
+  },
+  {
+    title: '金额',
+    key: 'amount',
+    width: 100,
+    render(row: CustomerBillItemVO) {
+      return money(row.amount);
+    }
+  },
+  {
+    title: '已收',
+    key: 'paidAmount',
+    width: 100,
+    render(row: CustomerBillItemVO) {
+      return money(row.paidAmount);
+    }
+  },
+  {
+    title: '未收',
+    key: 'unpaidAmount',
+    width: 100,
+    render(row: CustomerBillItemVO) {
+      return money(row.unpaidAmount);
+    }
+  },
+  {
+    title: '支付状态',
+    key: 'payStatus',
+    width: 110,
+    render(row: CustomerBillItemVO) {
+      return h(
+        NTag,
+        { type: payStatusTagType(row.payStatus) as any },
+        { default: () => payStatusLabel(row.payStatus) }
+      );
+    }
+  }
+];
+
 function unwrapRows(res: any) {
   const data = res?.data || res;
+  if (Array.isArray(data)) return data;
   return data?.rows || [];
 }
 
@@ -588,6 +801,128 @@ const columns = [
   }
 ];
 
+const collabBillColumns = [
+  {
+    title: '协作账单号',
+    key: 'collabBillNo',
+    width: 180,
+    fixed: 'left' as const
+  },
+  {
+    title: '源订单号',
+    key: 'sourceOrderNoSnapshot',
+    width: 170,
+    fixed: 'left' as const
+  },
+  {
+    title: '协作单号',
+    key: 'collabOrderNoSnapshot',
+    width: 190
+  },
+  {
+    title: '接单商家',
+    key: 'receiverTenantNameSnapshot',
+    width: 140
+  },
+  {
+    title: '账单标题',
+    key: 'billTitle',
+    width: 180,
+    ellipsis: {
+      tooltip: true
+    }
+  },
+  {
+    title: '应付金额',
+    key: 'billAmount',
+    width: 110,
+    render(row: CollabBillVO) {
+      return money(row.billAmount);
+    }
+  },
+  {
+    title: '已付',
+    key: 'paidAmount',
+    width: 100,
+    render(row: CollabBillVO) {
+      return money(row.paidAmount);
+    }
+  },
+  {
+    title: '未付',
+    key: 'unpaidAmount',
+    width: 100,
+    render(row: CollabBillVO) {
+      return money(row.unpaidAmount);
+    }
+  },
+  {
+    title: '支付状态',
+    key: 'payStatus',
+    width: 110,
+    render(row: CollabBillVO) {
+      return h(
+        NTag,
+        { type: payStatusTagType(row.payStatus) as any },
+        { default: () => payStatusLabel(row.payStatus) }
+      );
+    }
+  },
+  {
+    title: '账单状态',
+    key: 'billStatus',
+    width: 110,
+    render(row: CollabBillVO) {
+      return h(
+        NTag,
+        { type: collabBillStatusTagType(row.billStatus) as any },
+        { default: () => collabBillStatusLabel(row.billStatus) }
+      );
+    }
+  },
+  {
+    title: '发送时间',
+    key: 'sendTime',
+    width: 170
+  },
+  {
+    title: '付款确认时间',
+    key: 'paidConfirmTime',
+    width: 170
+  },
+  {
+    title: '操作',
+    key: 'actions',
+    width: 180,
+    fixed: 'right' as const,
+    render(row: CollabBillVO) {
+      return h(NSpace, { size: 8 }, {
+        default: () => [
+          h(
+            NButton,
+            {
+              size: 'small',
+              onClick: () => openCollabBillDetail(row)
+            },
+            { default: () => '账单详情' }
+          ),
+          h(
+            NButton,
+            {
+              size: 'small',
+              type: 'primary',
+              secondary: true,
+              disabled: !row.collabOrderId,
+              onClick: () => openCollabOrderDetail(row)
+            },
+            { default: () => '协作单详情' }
+          )
+        ]
+      });
+    }
+  }
+];
+
 async function loadCustomers() {
   const res = await fetchCustomerList({
     pageNum: 1,
@@ -598,6 +933,14 @@ async function loadCustomers() {
     label: `${item.customerName || ''} ${item.phone || ''}`,
     value: item.id
   }));
+}
+
+async function loadCollabMerchants() {
+  const res = await fetchCollabPartnerList({
+    status: 'ACCEPTED'
+  });
+
+  collabMerchantOptions.value = buildCollabMerchantOptions(res);
 }
 
 async function getList() {
@@ -611,6 +954,42 @@ async function getList() {
   }
 }
 
+async function getCollabBillList() {
+  collabBillLoading.value = true;
+  try {
+    const res = await fetchCollabBillList(buildSentCollabBillListParams(collabBillQueryParams));
+    collabBillTableData.value = unwrapRows(res);
+    collabBillTotal.value = unwrapTotal(res);
+  } finally {
+    collabBillLoading.value = false;
+  }
+}
+
+async function openCollabBillDetail(row: CollabBillVO) {
+  if (!row.id) return;
+  showCollabBillDetailDrawer.value = true;
+  collabBillDetailLoading.value = true;
+  try {
+    const res = await fetchCollabBillDetail(row.id);
+    collabBillDetail.value = unwrapData(res);
+  } finally {
+    collabBillDetailLoading.value = false;
+  }
+}
+
+function openCollabOrderDetail(row: CollabBillVO) {
+  const query = buildCollabOrderDetailQuery(row);
+  if (!query.collabOrderId) {
+    message.warning('协作账单未关联协作单');
+    return;
+  }
+
+  router.push({
+    path: '/biz/collaborder',
+    query
+  });
+}
+
 function resetQuery() {
   queryParams.billNo = '';
   queryParams.customerId = undefined;
@@ -619,6 +998,15 @@ function resetQuery() {
   queryParams.pageNum = 1;
   queryParams.unpaidOnly = false;
   getList();
+}
+
+function resetCollabBillQuery() {
+  collabBillQueryParams.keyword = '';
+  collabBillQueryParams.counterpartyTenantId = undefined;
+  collabBillQueryParams.payStatus = '';
+  collabBillQueryParams.billStatus = '';
+  collabBillQueryParams.pageNum = 1;
+  getCollabBillList();
 }
 
 async function openDetail(row: CustomerBillVO) {
@@ -725,6 +1113,17 @@ function handlePageSizeChange(pageSize: number) {
   getList();
 }
 
+function handleCollabBillPageChange(page: number) {
+  collabBillQueryParams.pageNum = page;
+  getCollabBillList();
+}
+
+function handleCollabBillPageSizeChange(pageSize: number) {
+  collabBillQueryParams.pageSize = pageSize;
+  collabBillQueryParams.pageNum = 1;
+  getCollabBillList();
+}
+
 async function refreshBillDetail() {
   const billId = billDetail.value?.bill?.id || currentBill.value?.id;
 
@@ -809,9 +1208,13 @@ function applyRouteQuery() {
 
 
 onMounted(async () => {
-  await loadCustomers();
+  await Promise.all([
+    loadCustomers(),
+    loadCollabMerchants()
+  ]);
   applyRouteQuery();
   getList();
+  getCollabBillList();
 });
 
 watch(
@@ -819,6 +1222,7 @@ watch(
   () => {
     applyRouteQuery();
     getList();
+    getCollabBillList();
   }
 );
 </script>
@@ -889,7 +1293,149 @@ watch(
           onUpdatePageSize: handlePageSizeChange
         }"
       />
+
+      <div class="section-title">协作账单（外协应付）</div>
+
+      <NAlert type="info">
+        这里展示当前商家作为发单方收到的协作账单，属于外协应付/协作成本，不混入客户应收账单。
+      </NAlert>
+
+      <NForm inline label-placement="left">
+        <NFormItem label="关键词">
+          <NInput
+            v-model:value="collabBillQueryParams.keyword"
+            clearable
+            placeholder="账单号 / 协作单号 / 源订单号"
+            style="width: 240px"
+          />
+        </NFormItem>
+
+        <NFormItem label="协作商家">
+          <NSelect
+            v-model:value="collabBillQueryParams.counterpartyTenantId"
+            :options="collabMerchantOptions"
+            filterable
+            clearable
+            style="width: 220px"
+          />
+        </NFormItem>
+
+        <NFormItem label="支付状态">
+          <NSelect
+            v-model:value="collabBillQueryParams.payStatus"
+            :options="payStatusOptions"
+            clearable
+            style="width: 130px"
+          />
+        </NFormItem>
+
+        <NFormItem label="账单状态">
+          <NSelect
+            v-model:value="collabBillQueryParams.billStatus"
+            :options="[
+              { label: '草稿', value: 'DRAFT' },
+              { label: '已发送', value: 'SENT' },
+              { label: '已作废', value: 'CANCELLED' }
+            ]"
+            clearable
+            style="width: 130px"
+          />
+        </NFormItem>
+
+        <NFormItem>
+          <NSpace>
+            <NButton type="primary" @click="getCollabBillList">查询</NButton>
+            <NButton @click="resetCollabBillQuery">重置</NButton>
+          </NSpace>
+        </NFormItem>
+      </NForm>
+
+      <NDataTable
+        remote
+        size="small"
+        :loading="collabBillLoading"
+        :columns="collabBillColumns"
+        :data="collabBillTableData"
+        :scroll-x="1800"
+        :pagination="{
+          page: collabBillQueryParams.pageNum,
+          pageSize: collabBillQueryParams.pageSize,
+          itemCount: collabBillTotal,
+          showSizePicker: true,
+          pageSizes: [10, 20, 50, 100],
+          onUpdatePage: handleCollabBillPageChange,
+          onUpdatePageSize: handleCollabBillPageSizeChange
+        }"
+      />
     </NSpace>
+
+    <NDrawer v-model:show="showCollabBillDetailDrawer" width="860" placement="right">
+      <NDrawerContent title="协作账单详情" closable>
+        <NSpin :show="collabBillDetailLoading">
+          <NSpace v-if="collabBillDetail" vertical :size="16">
+            <NCard title="账单信息" size="small">
+              <NDescriptions bordered :column="2" size="small">
+                <NDescriptionsItem label="协作账单号">
+                  {{ collabBillDetail.collabBillNo || '-' }}
+                </NDescriptionsItem>
+                <NDescriptionsItem label="账单标题">
+                  {{ collabBillDetail.billTitle || '-' }}
+                </NDescriptionsItem>
+                <NDescriptionsItem label="源订单号">
+                  {{ collabBillDetail.sourceOrderNoSnapshot || '-' }}
+                </NDescriptionsItem>
+                <NDescriptionsItem label="协作单号">
+                  {{ collabBillDetail.collabOrderNoSnapshot || '-' }}
+                </NDescriptionsItem>
+                <NDescriptionsItem label="发单方">
+                  {{ collabBillDetail.senderTenantNameSnapshot || collabBillDetail.senderTenantId || '-' }}
+                </NDescriptionsItem>
+                <NDescriptionsItem label="接单方">
+                  {{ collabBillDetail.receiverTenantNameSnapshot || collabBillDetail.receiverTenantId || '-' }}
+                </NDescriptionsItem>
+                <NDescriptionsItem label="应付金额">
+                  {{ money(collabBillDetail.billAmount) }}
+                </NDescriptionsItem>
+                <NDescriptionsItem label="支付状态">
+                  {{ payStatusLabel(collabBillDetail.payStatus) }}
+                </NDescriptionsItem>
+                <NDescriptionsItem label="账单状态">
+                  {{ collabBillStatusLabel(collabBillDetail.billStatus) }}
+                </NDescriptionsItem>
+                <NDescriptionsItem label="发送时间">
+                  {{ collabBillDetail.sendTime || '-' }}
+                </NDescriptionsItem>
+                <NDescriptionsItem label="付款确认时间">
+                  {{ collabBillDetail.paidConfirmTime || '-' }}
+                </NDescriptionsItem>
+                <NDescriptionsItem label="内部账单">
+                  {{ collabBillDetail.receiverInternalBillNoSnapshot || '-' }}
+                </NDescriptionsItem>
+                <NDescriptionsItem label="备注" :span="2">
+                  {{ collabBillDetail.remark || '-' }}
+                </NDescriptionsItem>
+              </NDescriptions>
+            </NCard>
+
+            <NCard title="账单明细" size="small">
+              <NEmpty v-if="parseCollabBillItems(collabBillDetail).length === 0" description="暂无账单明细" />
+              <NDataTable
+                v-else
+                size="small"
+                :columns="[
+                  { title: '费用名称', key: 'itemName', width: 180 },
+                  { title: '费用类型', key: 'itemType', width: 140 },
+                  { title: '金额', key: 'amount', width: 120 },
+                  { title: '备注', key: 'remark', minWidth: 220 }
+                ]"
+                :data="parseCollabBillItems(collabBillDetail)"
+                :pagination="false"
+              />
+            </NCard>
+          </NSpace>
+        </NSpin>
+      </NDrawerContent>
+    </NDrawer>
 
     <NDrawer v-model:show="showDetailDrawer" width="960" placement="right">
       <NDrawerContent title="账单详情" closable>
@@ -929,17 +1475,9 @@ watch(
             <NDataTable
               v-else
               size="small"
-              :columns="[
-                { title: '订单号', key: 'orderNoSnapshot', width: 170 },
-                { title: '费用类型', key: 'itemType', width: 120 },
-                { title: '费用名称', key: 'itemName', width: 140 },
-                { title: '金额', key: 'amount', width: 100 },
-                { title: '已收', key: 'paidAmount', width: 100 },
-                { title: '未收', key: 'unpaidAmount', width: 100 },
-                { title: '支付状态', key: 'payStatus', width: 120 }
-              ]"
+              :columns="billItemDetailColumns"
               :data="billDetail.items"
-              :scroll-x="900"
+              :scroll-x="1500"
             />
           </NCard>
 
@@ -1283,3 +1821,20 @@ watch(
 
   </NCard>
 </template>
+
+<style scoped>
+.muted-text {
+  color: var(--n-text-color-disabled);
+}
+
+.bill-print-spec-line {
+  line-height: 1.6;
+  white-space: normal;
+}
+
+.section-title {
+  margin-top: 12px;
+  font-size: 16px;
+  font-weight: 600;
+}
+</style>

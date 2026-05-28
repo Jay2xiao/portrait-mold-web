@@ -27,6 +27,7 @@ import {
 import { fetchPrinterOptions } from '@/service/api/biz/printer';
 import BizFileViewer from '@/views/biz/components/BizFileViewer.vue';
 import BizFileUpload from '@/views/biz/components/BizFileUpload.vue';
+import PrintTaskDetailDrawer from '@/views/biz/components/PrintTaskDetailDrawer.vue';
 
 defineOptions({
   name: 'BizPrintTask'
@@ -56,6 +57,8 @@ const queryParams = reactive({
 });
 
 const currentTask = ref<PrintTaskVO | null>(null);
+const showDetailDrawer = ref(false);
+const detailTaskId = ref<string | number | undefined>();
 
 const printerOptions = ref<any[]>([]);
 
@@ -188,6 +191,16 @@ const columns = [
     fixed: 'right' as const,
     render(row: PrintTaskVO) {
       const buttons: VNodeChild[] = [];
+      buttons.push(
+        h(
+          NButton,
+          {
+            size: 'small',
+            onClick: () => openDetail(row)
+          },
+          { default: () => '详情' }
+        )
+      );
 
       if (row.status === 'WAIT_QC') {
         buttons.push(
@@ -296,6 +309,11 @@ function resetQuery() {
   queryParams.status = '';
   queryParams.pageNum = 1;
   getList();
+}
+
+function openDetail(row: PrintTaskVO) {
+  detailTaskId.value = row.id;
+  showDetailDrawer.value = true;
 }
 
 async function loadPrinters() {
@@ -571,5 +589,10 @@ watch(
         </NSpace>
       </template>
     </NModal>
+
+    <PrintTaskDetailDrawer
+      v-model:show="showDetailDrawer"
+      :task-id="detailTaskId"
+    />
   </NCard>
 </template>

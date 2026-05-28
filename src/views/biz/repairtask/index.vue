@@ -95,6 +95,20 @@ function statusLabel(value?: string) {
   return statusOptions.find(item => item.value === value)?.label || value || '-';
 }
 
+function isCollabInternalWaitingSenderReview(row: RepairTaskVO) {
+  return (
+    row.sourceBizType === 'COLLAB_ORDER' &&
+    row.status === 'WAIT_PREVIEW_REVIEW' &&
+    row.collabOrderStatus === 'WAIT_SENDER_REVIEW' &&
+    row.collabSenderReviewStatus === 'PENDING' &&
+    row.collabReceiverInternalReviewStatus === 'APPROVED'
+  );
+}
+
+function isExternalRepairTask(row: RepairTaskVO) {
+  return row.assigneeType === 'EXTERNAL';
+}
+
 const showCreateModal = ref(false);
 const createForm = reactive({
   orderId: undefined as number | undefined,
@@ -152,7 +166,25 @@ const modelCheckForm = reactive({
 
 const columns = [
   {title: '任务号', key: 'taskNo', width: 120, fixed: 'left' as const},
-  {title: '订单号', key: 'orderNoSnapshot', width: 120, fixed: 'left' as const},
+  {
+    title: '订单号',
+    key: 'orderNoSnapshot',
+    width: 220,
+    fixed: 'left' as const,
+    render(row: RepairTaskVO) {
+      return h(NSpace, {vertical: true, size: 4}, {
+        default: () => [
+          h('span', row.orderNoSnapshot || '-'),
+          row.sourceBizType === 'COLLAB_ORDER'
+            ? h(NTag, {type: 'info', size: 'small', bordered: false}, {default: () => '协作接单内部单'})
+            : null,
+          row.sourceBizNo
+            ? h('span', {style: 'font-size:12px;color:#666;'}, `协作单号：${row.sourceBizNo}`)
+            : null
+        ].filter(Boolean)
+      });
+    }
+  },
   {title: '客户', key: 'customerNameSnapshot', width: 100, fixed: 'left' as const},
   {title: '产品', key: 'productNameSnapshot', width: 100},
   {title: '修模师', key: 'assigneeName', width: 100},
@@ -178,6 +210,10 @@ const columns = [
     key: 'status',
     width: 100,
     render(row: RepairTaskVO) {
+      if (isCollabInternalWaitingSenderReview(row)) {
+        return h(NTag, {type: 'warning'}, {default: () => '待发单方审核'});
+      }
+
       return h(NTag, {}, {default: () => statusLabel(row.status)});
     }
   },
@@ -216,8 +252,15 @@ const columns = [
     fixed: 'right' as const,
     render(row: RepairTaskVO) {
       const buttons: VNodeChild[] = [];
+      const externalRepairTask = isExternalRepairTask(row);
 
-      if (row.status === 'WAIT_CLAIM') {
+      if (externalRepairTask) {
+        buttons.push(
+          h(NTag, {type: 'info', bordered: false}, {default: () => '外协任务'})
+        );
+      }
+
+      if (!externalRepairTask && row.status === 'WAIT_CLAIM') {
         buttons.push(
           h(
             NButton,
@@ -231,7 +274,7 @@ const columns = [
         );
       }
 
-      if (row.status === 'WAIT_START') {
+      if (!externalRepairTask && row.status === 'WAIT_START') {
         buttons.push(
           h(
             NButton,
@@ -257,7 +300,11 @@ const columns = [
         );
       }
 
-      if (row.status === 'WAIT_PREVIEW_REVIEW') {
+      if (isCollabInternalWaitingSenderReview(row)) {
+        buttons.push(
+          h(NTag, {type: 'warning', bordered: false}, {default: () => '待发单方审核'})
+        );
+      } else if (!externalRepairTask && row.status === 'WAIT_PREVIEW_REVIEW') {
         buttons.push(
           h(
             NButton,
@@ -271,7 +318,7 @@ const columns = [
         );
       }
 
-      if (row.status === 'WAIT_MODEL_CHECK') {
+      if (!externalRepairTask && row.status === 'WAIT_MODEL_CHECK') {
         buttons.push(
           h(
             NButton,

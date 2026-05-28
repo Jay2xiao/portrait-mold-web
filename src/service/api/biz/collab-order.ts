@@ -26,6 +26,14 @@ export interface CollabDeliveryParams {
   remark?: string;
 }
 
+export interface CollabDeliveryInfoSyncParams {
+  deliveryType: string;
+  receiverName: string;
+  receiverPhone: string;
+  receiverAddress: string;
+  remark?: string;
+}
+
 
 export interface CollabOrderVO {
   id?: string | number;
@@ -48,6 +56,9 @@ export interface CollabOrderVO {
   sourceOrderStatusSnapshot?: string;
 
   senderRepairFeeAmount?: string | number | null;
+  printFeeAmount?: string | number | null;
+  collabAmount?: string | number | null;
+  receiverPrintTask?: CollabPrintTaskSummaryVO | null;
   title?: string;
   requirementDesc?: string;
 
@@ -104,6 +115,47 @@ export interface CollabOrderDetailVO {
   order?: CollabOrderVO;
   files?: CollabOrderFileVO[];
   printSpecs?: CollabPrintSpecVO[];
+  receiverPrintTask?: CollabPrintTaskSummaryVO | null;
+}
+
+export interface CollabPrintTaskSummaryVO {
+  id?: string | number;
+  taskNo?: string;
+  orderId?: string | number;
+  orderNoSnapshot?: string;
+  status?: string;
+  finalAmount?: string | number | null;
+  entityWeightG?: string | number | null;
+  supportWeightG?: string | number | null;
+  entityUnitPrice?: string | number | null;
+  supportUnitPrice?: string | number | null;
+  basePrintFee?: string | number | null;
+  postProcessFee?: string | number | null;
+  finishTime?: string;
+  materialRecordTime?: string;
+  finishPhotoFileIds?: string;
+  entityWeightPhotoFileIds?: string;
+  supportWeightPhotoFileIds?: string;
+  remark?: string;
+  printSpecs?: CollabPrintTaskSpecVO[];
+}
+
+export interface CollabPrintTaskSpecVO {
+  id?: string | number;
+  printTaskId?: string | number;
+  heightCm?: string | number | null;
+  quantity?: number | null;
+  estimatedWeightG?: string | number | null;
+  estimatedAmount?: string | number | null;
+  actualEntityWeightG?: string | number | null;
+  actualSupportWeightG?: string | number | null;
+  actualEntityUnitPrice?: string | number | null;
+  actualEntityWeightPhotoFileIds?: string;
+  actualSupportWeightPhotoFileIds?: string;
+  actualSupportUnitPrice?: string | number | null;
+  actualAmount?: string | number | null;
+  materialRemark?: string;
+  remark?: string;
 }
 
 
@@ -234,6 +286,7 @@ export function reviewCollabHd(
   data: {
     result: 'APPROVE' | 'REJECT';
     comment?: string;
+    attachmentIds?: string;
   }
 ) {
   return request<any>({
@@ -256,6 +309,7 @@ export function reviewCollabEffect(
   data: {
     result: 'APPROVE' | 'REJECT';
     comment?: string;
+    attachmentIds?: string;
   }
 ) {
   return request<any>({
@@ -285,6 +339,14 @@ export function syncCollabPrintStatus(id: string | number, data: CollabPrintStat
 export function deliveryCollabOrder(id: string | number, data: CollabDeliveryParams) {
   return request({
     url: `${BASE_URL}/${id}/delivery`,
+    method: 'post',
+    data
+  });
+}
+
+export function syncCollabDeliveryInfo(id: string | number, data: CollabDeliveryInfoSyncParams) {
+  return request({
+    url: `${BASE_URL}/${id}/sync-delivery-info`,
     method: 'post',
     data
   });
@@ -392,4 +454,3 @@ export function sendCollabOrderByStageRoute(data: SendCollabOrderByStageRoutePar
     data
   });
 }
-

@@ -101,7 +101,20 @@
         </NDescriptions>
 
         <NAlert v-if="displayBill.internalBillSyncStatus === 'FAILED'" type="error" class="mt-12px">
-          内部账单同步失败：{{ displayBill.internalBillSyncError || '未知错误' }}
+          <NSpace vertical :size="8">
+            <span>内部账单同步失败：{{ displayBill.internalBillSyncError || '未知错误' }}</span>
+            <NButton
+              size="small"
+              type="warning"
+              ghost
+              :disabled="!isReceiver"
+              :loading="busy"
+              :title="isReceiver ? '' : '仅接单方可重试同步内部账单'"
+              @click="confirmResyncBill"
+            >
+              重试账单同步
+            </NButton>
+          </NSpace>
         </NAlert>
 
         <template v-if="billItems.length">
@@ -275,6 +288,10 @@
       :style="{ width: '520px' }"
     >
       <NForm label-placement="left" label-width="90px">
+        <NFormItem v-if="currentReviewFileIds.length" label="凭证文件">
+          <BizFileViewer :file-ids="currentReviewFileIds" mode="image" :max="10" :thumb-size="80" show-name />
+        </NFormItem>
+
         <NFormItem label="审核备注" :required="reviewMode === 'reject'">
           <NInput
             v-model:value="reviewForm.reviewRemark"
@@ -361,6 +378,7 @@ import {
   type CollabBillItemDisplay
 } from '@/service/api/biz//collabFinanceMeta';
 import BizFileUpload from "@/views/biz/components/BizFileUpload.vue";
+import BizFileViewer from "@/views/biz/components/BizFileViewer.vue";
 
 type RoleType = 'sender' | 'receiver' | 'auto';
 
@@ -475,6 +493,7 @@ const isReceiver = computed(() => normalizedRole.value === 'receiver');
 
 const displayBill = computed(() => localBill.value);
 const displayVouchers = computed(() => localPaymentVouchers.value);
+const currentReviewFileIds = computed(() => parseProofFileIds(currentReviewVoucher.value?.proofFileIds));
 
 const billItems = computed<CollabBillItemDisplay[]>(() => {
   return parseBillItems(displayBill.value?.billItemsJson || '');
@@ -600,25 +619,13 @@ const voucherColumns = computed<DataTableColumns<CollabPaymentVoucherVO>>(() => 
           return '-';
         }
 
-        return h(
-          NSpace,
-          { size: 4 },
-          {
-            default: () =>
-              fileIds.map(fileId =>
-                h(
-                  NTag,
-                  {
-                    size: 'small',
-                    type: 'info'
-                  },
-                  {
-                    default: () => fileId
-                  }
-                )
-              )
-          }
-        );
+        return h(BizFileViewer, {
+          fileIds,
+          mode: 'image',
+          max: 4,
+          thumbSize: 54,
+          showName: true
+        });
       }
     },
     {
@@ -1101,7 +1108,7 @@ function parseFileIdTags(tags: string[]): CollabId[] {
         throw new Error(`文件ID必须是数字：${item}`);
       }
 
-      return Number(item);
+      return item;
     });
 }
 

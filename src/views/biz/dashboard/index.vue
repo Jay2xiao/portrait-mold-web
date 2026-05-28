@@ -72,6 +72,8 @@ function orderStatusLabel(value?: string) {
     WAIT_MODEL_QC: '待模型检测',
     WAIT_PRINT_QC: '待打印检测',
     PRINT_QC_REJECTED: '打印检测驳回',
+    WAIT_PRINT: '待打印',
+    WAIT_PRINT_COLLAB_SEND: '待发打印协作',
     WAIT_PRINT_CLAIM: '待打印接单',
     PRINTING: '打印中',
     WAIT_DELIVERY: '待发货',

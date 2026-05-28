@@ -34,6 +34,13 @@ export function fetchReceivableItemList(params: any) {
   });
 }
 
+export function fetchReceivableCounterpartyOptions() {
+  return request<any>({
+    url: `${BASE_URL}/counterparty-options`,
+    method: 'get'
+  });
+}
+
 export function fetchUnbilledReceivableItems(params: any) {
   return request<any>({
     url: `${BASE_URL}/unbilled`,

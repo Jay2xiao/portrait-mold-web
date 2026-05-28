@@ -138,7 +138,25 @@ function calcPreviewTimeoutMinutes(task?: RepairTaskVO | null) {
 
 const columns = [
   {title: '任务号', key: 'taskNo', width: 100, fixed: 'left' as const},
-  {title: '订单号', key: 'orderNoSnapshot', width: 100, fixed: 'left' as const},
+  {
+    title: '订单号',
+    key: 'orderNoSnapshot',
+    width: 220,
+    fixed: 'left' as const,
+    render(row: RepairTaskVO) {
+      return h(NSpace, {vertical: true, size: 4}, {
+        default: () => [
+          h('span', row.orderNoSnapshot || '-'),
+          row.sourceBizType === 'COLLAB_ORDER'
+            ? h(NTag, {type: 'info', size: 'small', bordered: false}, {default: () => '协作接单内部单'})
+            : null,
+          row.sourceBizNo
+            ? h('span', {style: 'font-size:12px;color:#666;'}, `协作单号：${row.sourceBizNo}`)
+            : null
+        ].filter(Boolean)
+      });
+    }
+  },
   {title: '客户', key: 'customerNameSnapshot', width: 100, fixed: 'left' as const},
   {title: '产品', key: 'productNameSnapshot', width: 100},
   {title: '修模师费用', key: 'quoteManualAmount', width: 120},

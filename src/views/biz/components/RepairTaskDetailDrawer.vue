@@ -210,6 +210,22 @@ watch(
                 {{ task.orderNoSnapshot || '-' }}
               </NDescriptionsItem>
 
+              <NDescriptionsItem label="来源">
+                <NTag
+                  v-if="task.sourceBizType === 'COLLAB_ORDER'"
+                  type="info"
+                  size="small"
+                  :bordered="false"
+                >
+                  协作接单内部单
+                </NTag>
+                <span v-else>-</span>
+              </NDescriptionsItem>
+
+              <NDescriptionsItem label="协作单号">
+                {{ task.sourceBizNo || '-' }}
+              </NDescriptionsItem>
+
               <NDescriptionsItem label="客户">
                 {{ task.customerNameSnapshot || '-' }}
               </NDescriptionsItem>

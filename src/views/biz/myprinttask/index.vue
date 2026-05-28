@@ -2,6 +2,7 @@
 import { computed, h, onMounted, reactive, ref, VNodeChild } from 'vue';
 
 import {
+  NAlert,
   NButton,
   NCard,
   NDataTable,
@@ -28,6 +29,7 @@ import {
 import BizFileViewer from '@/views/biz/components/BizFileViewer.vue';
 import BizFileUpload from '@/views/biz/components/BizFileUpload.vue';
 import BizFileThumbs from '@/views/biz/components/BizFileThumbs.vue';
+import PrintTaskDetailDrawer from '@/views/biz/components/PrintTaskDetailDrawer.vue';
 
 defineOptions({
   name: 'BizMyPrintTask'
@@ -46,6 +48,8 @@ const queryParams = reactive({
 });
 
 const currentTask = ref<PrintTaskVO | null>(null);
+const showDetailDrawer = ref(false);
+const detailTaskId = ref<string | number | undefined>();
 
 const showFinishModal = ref(false);
 const finishPhotoFileIdList = ref<Array<string | number>>([]);
@@ -60,6 +64,8 @@ interface MaterialSpecRow extends PrintTaskSpecVO {
   actualSupportWeightG?: number;      // 原: number | null | undefined
   actualEntityUnitPrice?: number;     // 原: number | null | undefined
   actualSupportUnitPrice?: number;    // 原: number | null | undefined
+  entityWeightPhotoFileIdList?: Array<string | number>;
+  supportWeightPhotoFileIdList?: Array<string | number>;
   materialRemark?: string;
 }
 
@@ -181,7 +187,7 @@ const columns = [
                   round: true
                 },
                 {
-                  default: () => `${spec.heightCm || '-'}cm × ${spec.quantity || 0}`
+                  default: () => `${spec.heightCm || '-'}cm / 1件`
                 }
               )
             )
@@ -196,6 +202,16 @@ const columns = [
     fixed: 'right' as const,
     render(row: PrintTaskVO) {
       const buttons: VNodeChild[] = [];
+      buttons.push(
+        h(
+          NButton,
+          {
+            size: 'small',
+            onClick: () => openDetail(row)
+          },
+          { default: () => '详情' }
+        )
+      );
 
       if (row.status === 'WAIT_START') {
         buttons.push(
@@ -289,6 +305,11 @@ async function handleStart(row: PrintTaskVO) {
   getList();
 }
 
+function openDetail(row: PrintTaskVO) {
+  detailTaskId.value = row.id;
+  showDetailDrawer.value = true;
+}
+
 function openFinish(row: PrintTaskVO) {
   currentTask.value = row;
   finishPhotoFileIdList.value = row.finishPhotoFileIds ? row.finishPhotoFileIds.split(',') : [];
@@ -326,6 +347,11 @@ function handlePageSizeChange(pageSize: number) {
 }
 
 function openMaterialRecord(row: PrintTaskVO) {
+  if (!row.printSpecs || row.printSpecs.length === 0) {
+    message.warning('当前打印任务缺少打印规格，请先补充打印规格后再录入材料');
+    return;
+  }
+
   currentTask.value = row;
 
   materialForm.entityWeightG = row.entityWeightG || 0;
@@ -343,6 +369,10 @@ function openMaterialRecord(row: PrintTaskVO) {
     actualSupportWeightG: item.actualSupportWeightG ?? 0,
     actualEntityUnitPrice: item.actualEntityUnitPrice ?? row.entityUnitPrice ?? 0,
     actualSupportUnitPrice: item.actualSupportUnitPrice ?? row.supportUnitPrice ?? 0,
+    actualEntityWeightPhotoFileIds: item.actualEntityWeightPhotoFileIds || '',
+    actualSupportWeightPhotoFileIds: item.actualSupportWeightPhotoFileIds || '',
+    entityWeightPhotoFileIdList: item.actualEntityWeightPhotoFileIds ? item.actualEntityWeightPhotoFileIds.split(',') : [],
+    supportWeightPhotoFileIdList: item.actualSupportWeightPhotoFileIds ? item.actualSupportWeightPhotoFileIds.split(',') : [],
     materialRemark: item.materialRemark || ''
   }));
 
@@ -420,7 +450,8 @@ function calcFinalAmount() {
 
 function validateMaterialSpecs() {
   if (!hasMaterialSpecs.value) {
-    return true;
+    message.warning('当前打印任务缺少打印规格，不能录入材料');
+    return false;
   }
 
   for (const [index, row] of materialSpecRows.value.entries()) {
@@ -443,6 +474,11 @@ function validateMaterialSpecs() {
       message.warning(`第 ${index + 1} 条打印规格请填写支撑材料单克价格`);
       return false;
     }
+
+    if (!row.entityWeightPhotoFileIdList || row.entityWeightPhotoFileIdList.length === 0) {
+      message.warning(`第 ${index + 1} 条打印规格请上传实体称重照片`);
+      return false;
+    }
   }
 
   return true;
@@ -450,7 +486,7 @@ function validateMaterialSpecs() {
 
 function buildMaterialSpecPayload() {
   if (!hasMaterialSpecs.value) {
-    return undefined;
+    return [];
   }
 
   return materialSpecRows.value.map(row => ({
@@ -465,6 +501,8 @@ function buildMaterialSpecPayload() {
     actualEntityWeightG: toNumber(row.actualEntityWeightG),
     actualSupportWeightG: toNumber(row.actualSupportWeightG),
     actualEntityUnitPrice: toNumber(row.actualEntityUnitPrice),
+    actualEntityWeightPhotoFileIds: (row.entityWeightPhotoFileIdList || []).join(','),
+    actualSupportWeightPhotoFileIds: (row.supportWeightPhotoFileIdList || []).join(','),
     actualSupportUnitPrice: toNumber(row.actualSupportUnitPrice),
 
     materialRemark: row.materialRemark || '',
@@ -476,12 +514,12 @@ function buildMaterialSpecPayload() {
 async function submitMaterialRecord() {
   if (!currentTask.value?.id) return;
 
-  if (entityWeightPhotoFileIdList.value.length === 0) {
+  if (!hasMaterialSpecs.value && entityWeightPhotoFileIdList.value.length === 0) {
     message.warning('请上传实体材料称重照片');
     return;
   }
 
-  if (supportWeightPhotoFileIdList.value.length === 0) {
+  if (!hasMaterialSpecs.value && supportWeightPhotoFileIdList.value.length === 0) {
     message.warning('请上传支撑材料称重照片');
     return;
   }
@@ -632,7 +670,7 @@ onMounted(() => {
                   </NTag>
 
                   <span>
-            高度：{{ row.heightCm || '-' }} cm，数量：{{ row.quantity || 0 }} 个
+            高度：{{ row.heightCm || '-' }} cm，单件规格
           </span>
 
                   <span style="color: #999">
@@ -690,6 +728,34 @@ onMounted(() => {
                   </NFormItem>
                 </NSpace>
 
+                <NSpace :size="12" align="start" wrap>
+                  <NFormItem label="实体称重照片" required>
+                    <BizFileUpload
+                      v-model="row.entityWeightPhotoFileIdList"
+                      biz-type="PRINT_TASK_SPEC"
+                      :biz-id="row.id"
+                      :order-id="currentTask?.orderId"
+                      :task-id="currentTask?.id"
+                      file-stage="PRINT_MATERIAL"
+                      file-type="SPEC_ENTITY_WEIGHT_PHOTO"
+                      :max="3"
+                    />
+                  </NFormItem>
+
+                  <NFormItem label="支撑称重照片">
+                    <BizFileUpload
+                      v-model="row.supportWeightPhotoFileIdList"
+                      biz-type="PRINT_TASK_SPEC"
+                      :biz-id="row.id"
+                      :order-id="currentTask?.orderId"
+                      :task-id="currentTask?.id"
+                      file-stage="PRINT_MATERIAL"
+                      file-type="SPEC_SUPPORT_WEIGHT_PHOTO"
+                      :max="3"
+                    />
+                  </NFormItem>
+                </NSpace>
+
                 <NInput
                   v-model:value="row.materialRemark"
                   placeholder="该规格材料备注，可选"
@@ -701,6 +767,12 @@ onMounted(() => {
 
 
         <template v-if="!hasMaterialSpecs">
+          <NAlert type="error" show-icon>
+            当前打印任务缺少打印规格，不能录入材料。请先在订单或协作发单流程补齐打印规格。
+          </NAlert>
+        </template>
+
+        <template v-if="false">
           <!-- 原来的实体材料克数、实体单克价格、支撑材料克数、支撑单克价格 -->
 
           <NFormItem label="实体材料克数">
@@ -844,6 +916,11 @@ onMounted(() => {
         </NSpace>
       </template>
     </NModal>
+
+    <PrintTaskDetailDrawer
+      v-model:show="showDetailDrawer"
+      :task-id="detailTaskId"
+    />
 
   </NCard>
 </template>

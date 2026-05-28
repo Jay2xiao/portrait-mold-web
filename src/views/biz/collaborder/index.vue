@@ -48,6 +48,7 @@ import {
   reviewCollabHd,
   submitCollabEffectReview,
   submitCollabHdReview,
+  syncCollabDeliveryInfo,
   syncCollabPrintStatus
 } from '@/service/api/biz/collab-order';
 
@@ -86,6 +87,9 @@ interface CollabOrderRow {
   serviceType?: string;
   materialPackageType?: string;
   senderRepairFeeAmount?: number | string;
+  printFeeAmount?: number | string;
+  collabAmount?: number | string;
+  receiverPrintTask?: Record<string, any> | null;
   status?: string;
   paymentStatus?: string;
   printStatus?: string;
@@ -155,6 +159,7 @@ const voucherReviewMode = ref<'approve' | 'reject'>('approve');
 
 const processedHdFileIds = ref<CollabId[]>([]);
 const effectFileIds = ref<CollabId[]>([]);
+const effectRejectAttachmentFileIds = ref<CollabId[]>([]);
 const deliveryFileIds = ref<CollabId[]>([]);
 const voucherFileIds = ref<CollabId[]>([]);
 
@@ -196,7 +201,7 @@ const rejectForm = reactive({
 });
 
 const hdReviewForm = reactive({
-  result: 'APPROVE' as 'APPROVE' | 'REJECT',
+  result: '' as '' | 'APPROVE' | 'REJECT',
   comment: ''
 });
 
@@ -215,6 +220,19 @@ const deliveryForm = reactive({
   logisticsNo: '',
   remark: ''
 });
+
+const deliveryInfoForm = reactive({
+  deliveryType: 'EXPRESS',
+  receiverName: '',
+  receiverPhone: '',
+  receiverAddress: '',
+  remark: ''
+});
+
+const deliveryTypeOptions = [
+  { label: '快递发货', value: 'EXPRESS' },
+  { label: '同城配送', value: 'LOCAL_DELIVERY' }
+];
 
 const billCreateForm = reactive({
   billAmount: null as number | null,
@@ -244,6 +262,7 @@ const submittingReject = ref(false);
 const submittingHd = ref(false);
 const submittingEffect = ref(false);
 const submittingPrint = ref(false);
+const submittingDeliveryInfo = ref(false);
 const submittingDelivery = ref(false);
 const submittingBill = ref(false);
 const submittingVoucher = ref(false);
@@ -312,6 +331,15 @@ const isSentRole = computed(() => currentRole.value === 'SENT');
 const isReceivedRole = computed(() => currentRole.value === 'RECEIVED');
 
 const currentOrder = computed<CollabOrderRow>(() => detail.value?.order || {});
+const receiverPrintTask = computed(() => detail.value?.receiverPrintTask || null);
+const receiverPrintSpecs = computed(() => {
+  const taskSpecs = receiverPrintTask.value?.printSpecs;
+  if (Array.isArray(taskSpecs) && taskSpecs.length > 0) {
+    return taskSpecs;
+  }
+
+  return detail.value?.printSpecs || [];
+});
 const currentBill = computed<CollabBillVO | null>(() => detail.value?.bill || null);
 const paymentVouchers = computed<CollabPaymentVoucherVO[]>(() =>
   Array.isArray(detail.value?.paymentVouchers) ? detail.value.paymentVouchers : []
@@ -367,10 +395,53 @@ const processedHdReviewFileIds = computed<CollabId[]>(() => {
   return Array.from(new Set(ids));
 });
 
+const repairEffectReviewFiles = computed<CollabFileRow[]>(() => {
+  return currentFiles.value.filter(item => {
+    return ['REPAIR_EFFECT_IMAGE', 'EFFECT'].includes(normalizeCollabFileType(item.fileType)) && item.fileId;
+  });
+});
+
+const repairEffectReviewFileIds = computed<CollabId[]>(() => {
+  const ids = repairEffectReviewFiles.value
+    .map(item => item.fileId)
+    .filter(item => item !== undefined && item !== null && item !== '')
+    .map(item => String(item));
+
+  return Array.from(new Set(ids));
+});
+
 
 const currentOrderId = computed(() => currentOrder.value?.id);
 const orderStatus = computed(() => currentOrder.value?.status || '');
 const paymentStatus = computed(() => currentOrder.value?.paymentStatus || '');
+const receiverPrintTotalWeight = computed(() => {
+  const task = receiverPrintTask.value;
+  if (!task) return null;
+  return Number(task.entityWeightG || 0) + Number(task.supportWeightG || 0);
+});
+
+function formatPrintWeight(task?: Record<string, any> | null) {
+  if (!task) return '-';
+
+  const entity = Number(task.entityWeightG || 0);
+  const support = Number(task.supportWeightG || 0);
+  const total = entity + support;
+
+  if (total <= 0) return '-';
+
+  return `${total.toFixed(2)}g`;
+}
+
+function formatPrintMaterial(task?: Record<string, any> | null) {
+  if (!task) return '-';
+
+  const entityPrice = Number(task.entityUnitPrice || 0);
+  const supportPrice = Number(task.supportUnitPrice || 0);
+
+  if (entityPrice <= 0 && supportPrice <= 0) return '-';
+
+  return `实体${money(entityPrice)}/g 支撑${money(supportPrice)}/g`;
+}
 
 const billItems = computed(() => parseBillItems(currentBill.value?.billItemsJson || ''));
 
@@ -415,6 +486,16 @@ const canSyncPrint = computed(() => {
 
 const canDelivery = computed(() => {
   return isReceivedRole.value && orderStatus.value === 'WAIT_DELIVERY' && currentOrder.value?.printStatus === 'PRINT_COMPLETED';
+});
+
+const canSyncDeliveryInfo = computed(() => {
+  return (
+    isSentRole.value &&
+    orderStatus.value === 'WAIT_DELIVERY' &&
+    currentOrder.value?.printStatus === 'PRINT_COMPLETED' &&
+    currentOrder.value?.receiverDeliveryRequired === '1' &&
+    currentOrder.value?.deliveryStatus !== 'DELIVERED'
+  );
 });
 
 const canCreateBill = computed(() => {
@@ -476,6 +557,9 @@ const baseColumns: DataTableColumns<CollabOrderRow> = [
     key: 'sourceCustomerNameSnapshot',
     width: 150,
     render(row) {
+      if (activeTab.value === 'RECEIVED') {
+        return '-';
+      }
       return row.sourceCustomerNameSnapshot || '-';
     }
   },
@@ -513,10 +597,20 @@ const baseColumns: DataTableColumns<CollabOrderRow> = [
   },
   {
     title: '费用',
-    key: 'senderRepairFeeAmount',
-    width: 120,
+    key: 'collabAmount',
+    width: 260,
     render(row) {
-      return money(row.senderRepairFeeAmount);
+      return h(
+        'div',
+        { class: 'amount-cell' },
+        [
+          h('div', { class: 'amount-total' }, `合计 ${money(row.collabAmount ?? row.senderRepairFeeAmount)}`),
+          h('div', { class: 'amount-sub' }, `修模 ${money(row.senderRepairFeeAmount)}`),
+          h('div', { class: 'amount-sub' }, `打印 ${money(row.receiverPrintTask?.finalAmount || row.printFeeAmount)}`),
+          h('div', { class: 'amount-sub' }, `克数 ${formatPrintWeight(row.receiverPrintTask)}`),
+          h('div', { class: 'amount-sub' }, `材料 ${formatPrintMaterial(row.receiverPrintTask)}`)
+        ]
+      );
     }
   },
   {
@@ -606,6 +700,19 @@ const baseColumns: DataTableColumns<CollabOrderRow> = [
               onClick: () => openHdReviewFromRow(row)
             },
             { default: () => '确认高清图' }
+          )
+        );
+      }
+      if (activeTab.value === 'SENT' && row.status === 'WAIT_SENDER_REVIEW') {
+        buttons.push(
+          h(
+            NButton,
+            {
+              size: 'small',
+              type: 'primary',
+              onClick: () => openEffectReviewFromRow(row)
+            },
+            { default: () => '审核效果图' }
           )
         );
       }
@@ -1050,6 +1157,12 @@ function resetActionForms() {
   deliveryForm.logisticsNo = '';
   deliveryForm.remark = '';
 
+  deliveryInfoForm.deliveryType = 'EXPRESS';
+  deliveryInfoForm.receiverName = '';
+  deliveryInfoForm.receiverPhone = '';
+  deliveryInfoForm.receiverAddress = '';
+  deliveryInfoForm.remark = '';
+
   billCreateForm.billAmount = null;
   billCreateForm.billTitle = '';
   billCreateForm.billRemark = '';
@@ -1069,6 +1182,10 @@ function initActionForms() {
 
   deliveryForm.logisticsCompany = order.logisticsCompany || '';
   deliveryForm.logisticsNo = order.logisticsNo || '';
+  deliveryInfoForm.deliveryType = order.deliveryTypeSnapshot || 'EXPRESS';
+  deliveryInfoForm.receiverName = order.receiverNameSnapshot || '';
+  deliveryInfoForm.receiverPhone = order.receiverPhoneSnapshot || '';
+  deliveryInfoForm.receiverAddress = order.receiverAddressSnapshot || '';
 
   if (currentBill.value) {
     const amount = Number(currentBill.value.unpaidAmount || currentBill.value.billAmount || 0);
@@ -1145,8 +1262,8 @@ async function submitHdReview() {
   }
 }
 
-function openHdReviewModal(result: 'APPROVE' | 'REJECT' = 'APPROVE') {
-  hdReviewForm.result = result;
+function openHdReviewModal(_result: 'APPROVE' | 'REJECT' = 'APPROVE') {
+  hdReviewForm.result = '';
   hdReviewForm.comment = '';
   showHdReviewModal.value = true;
 }
@@ -1180,22 +1297,43 @@ async function submitEffectReview() {
 function openEffectReviewModal(result: 'APPROVE' | 'REJECT') {
   effectReviewForm.result = result;
   effectReviewForm.comment = '';
+  effectRejectAttachmentFileIds.value = [];
   showEffectReviewModal.value = true;
+}
+
+function switchEffectReviewResult(result: 'APPROVE' | 'REJECT') {
+  effectReviewForm.result = result;
+  if (result === 'APPROVE') {
+    effectRejectAttachmentFileIds.value = [];
+  }
 }
 
 async function submitEffectReviewResult() {
   if (!currentOrderId.value) return;
+
+  if (effectReviewForm.result === 'REJECT') {
+    if (!effectReviewForm.comment.trim()) {
+      message.warning('请输入驳回原因');
+      return;
+    }
+    if (effectRejectAttachmentFileIds.value.length === 0) {
+      message.warning('请上传驳回附件');
+      return;
+    }
+  }
 
   submittingReview.value = true;
 
   try {
     await reviewCollabEffect(currentOrderId.value, {
       result: effectReviewForm.result,
-      comment: effectReviewForm.comment
+      comment: effectReviewForm.comment,
+      attachmentIds: effectReviewForm.result === 'REJECT' ? effectRejectAttachmentFileIds.value.join(',') : undefined
     });
 
     message.success(effectReviewForm.result === 'APPROVE' ? '效果图已审核通过' : '效果图已驳回');
     showEffectReviewModal.value = false;
+    effectRejectAttachmentFileIds.value = [];
     await reloadDetail();
   } finally {
     submittingReview.value = false;
@@ -1263,6 +1401,50 @@ async function submitDelivery() {
         await reloadDetail();
       } finally {
         submittingDelivery.value = false;
+      }
+    }
+  });
+}
+
+async function submitDeliveryInfo() {
+  if (!currentOrderId.value) return;
+
+  if (!deliveryInfoForm.receiverName.trim()) {
+    message.warning('请输入收件人');
+    return;
+  }
+
+  if (!deliveryInfoForm.receiverPhone.trim()) {
+    message.warning('请输入收件电话');
+    return;
+  }
+
+  if (!deliveryInfoForm.receiverAddress.trim()) {
+    message.warning('请输入收件地址');
+    return;
+  }
+
+  dialog.warning({
+    title: '同步收货信息',
+    content: `确认把收货信息同步给接单方？收件人：${deliveryInfoForm.receiverName}，电话：${deliveryInfoForm.receiverPhone}`,
+    positiveText: '确认同步',
+    negativeText: '取消',
+    onPositiveClick: async () => {
+      submittingDeliveryInfo.value = true;
+
+      try {
+        await syncCollabDeliveryInfo(currentOrderId.value!, {
+          deliveryType: deliveryInfoForm.deliveryType,
+          receiverName: deliveryInfoForm.receiverName,
+          receiverPhone: deliveryInfoForm.receiverPhone,
+          receiverAddress: deliveryInfoForm.receiverAddress,
+          remark: deliveryInfoForm.remark
+        });
+
+        message.success('收货信息已同步给接单方');
+        await reloadDetail();
+      } finally {
+        submittingDeliveryInfo.value = false;
       }
     }
   });
@@ -1357,8 +1539,9 @@ async function submitHdReviewResult() {
   submittingReview.value = true;
 
   try {
+    const result = hdReviewForm.result as 'APPROVE' | 'REJECT';
     await reviewCollabHd(id, {
-      result: hdReviewForm.result,
+      result,
       comment: hdReviewForm.comment
     });
 
@@ -1543,10 +1726,20 @@ async function openHdReviewFromRow(row: CollabOrderRow) {
    */
   await openDetailById(row.id, 'SENT');
 
-  hdReviewForm.result = 'APPROVE';
+  hdReviewForm.result = '';
   hdReviewForm.comment = '';
 
   showHdReviewModal.value = true;
+}
+
+async function openEffectReviewFromRow(row: CollabOrderRow) {
+  if (!row.id) {
+    message.warning('协作单ID不能为空');
+    return;
+  }
+
+  await openDetailById(row.id, 'SENT');
+  openEffectReviewModal('APPROVE');
 }
 
 function confirmResyncPayment(row: CollabPaymentVoucherVO) {
@@ -1913,6 +2106,15 @@ function deliveryStatusText(value?: string) {
   return value ? map[value] || value : '-';
 }
 
+function deliveryTypeText(value?: string) {
+  const map: Record<string, string> = {
+    EXPRESS: '快递发货',
+    LOCAL_DELIVERY: '同城配送',
+    SELF_PICKUP: '到店自取'
+  };
+  return value ? map[value] || value : '-';
+}
+
 function fileTypeText(value?: string) {
   const map: Record<string, string> = {
     RAW_PHOTO: '原图',
@@ -2100,6 +2302,12 @@ function timelineType(value?: string) {
                 <NDescriptionsItem label="修模费用">
                   {{ money(currentOrder.senderRepairFeeAmount) }}
                 </NDescriptionsItem>
+                <NDescriptionsItem label="打印费用">
+                  {{ money(currentOrder.printFeeAmount) }}
+                </NDescriptionsItem>
+                <NDescriptionsItem label="协作合计">
+                  {{ money(currentOrder.collabAmount) }}
+                </NDescriptionsItem>
                 <NDescriptionsItem label="创建时间">
                   {{ currentOrder.createTime || '-' }}
                 </NDescriptionsItem>
@@ -2110,6 +2318,26 @@ function timelineType(value?: string) {
                   {{ currentOrder.requirementDesc || '-' }}
                 </NDescriptionsItem>
               </NDescriptions>
+
+              <NDataTable
+                v-if="receiverPrintSpecs.length > 0"
+                size="small"
+                style="margin-top: 12px"
+                :columns="[
+                  { title: '高度/cm', key: 'heightCm', width: 100, render: row => money(row.heightCm) },
+                  { title: '件数', key: 'quantity', width: 80, render: () => '1件' },
+                  { title: '实体克数', key: 'actualEntityWeightG', width: 110, render: row => row.actualEntityWeightG ?? '-' },
+                  { title: '支撑克数', key: 'actualSupportWeightG', width: 110, render: row => row.actualSupportWeightG ?? '-' },
+                  { title: '实体单价', key: 'actualEntityUnitPrice', width: 110, render: row => money(row.actualEntityUnitPrice) },
+                  { title: '支撑单价', key: 'actualSupportUnitPrice', width: 110, render: row => money(row.actualSupportUnitPrice) },
+                  { title: '小计', key: 'actualAmount', width: 110, render: row => money(row.actualAmount) },
+                  { title: '实体称重照片', key: 'actualEntityWeightPhotoFileIds', width: 150, render: row => h(BizFileViewer, { fileIds: row.actualEntityWeightPhotoFileIds, mode: 'image', max: 3, thumbSize: 48 }) },
+                  { title: '支撑称重照片', key: 'actualSupportWeightPhotoFileIds', width: 150, render: row => h(BizFileViewer, { fileIds: row.actualSupportWeightPhotoFileIds, mode: 'image', max: 3, thumbSize: 48 }) },
+                  { title: '备注', key: 'materialRemark', minWidth: 160, render: row => row.materialRemark || row.remark || '-' }
+                ]"
+                :data="receiverPrintSpecs"
+                :scroll-x="1190"
+              />
             </NCard>
 
             <NCard title="打印 / 发货信息" size="small">
@@ -2119,6 +2347,47 @@ function timelineType(value?: string) {
                 </NDescriptionsItem>
                 <NDescriptionsItem label="打印完成时间">
                   {{ currentOrder.printCompletedTime || '-' }}
+                </NDescriptionsItem>
+                <NDescriptionsItem label="打印任务">
+                  {{ receiverPrintTask?.taskNo || '-' }}
+                </NDescriptionsItem>
+                <NDescriptionsItem label="打印费用">
+                  {{ money(receiverPrintTask?.finalAmount || currentOrder.printFeeAmount) }}
+                </NDescriptionsItem>
+                <NDescriptionsItem label="实体克数">
+                  {{ receiverPrintTask?.entityWeightG ?? '-' }}
+                </NDescriptionsItem>
+                <NDescriptionsItem label="支撑克数">
+                  {{ receiverPrintTask?.supportWeightG ?? '-' }}
+                </NDescriptionsItem>
+                <NDescriptionsItem label="总克数">
+                  {{ receiverPrintTotalWeight === null ? '-' : receiverPrintTotalWeight }}
+                </NDescriptionsItem>
+                <NDescriptionsItem label="实体单克价">
+                  {{ money(receiverPrintTask?.entityUnitPrice) }}
+                </NDescriptionsItem>
+                <NDescriptionsItem label="支撑单克价">
+                  {{ money(receiverPrintTask?.supportUnitPrice) }}
+                </NDescriptionsItem>
+                <NDescriptionsItem label="基础打印费">
+                  {{ money(receiverPrintTask?.basePrintFee) }}
+                </NDescriptionsItem>
+                <NDescriptionsItem label="后处理费">
+                  {{ money(receiverPrintTask?.postProcessFee) }}
+                </NDescriptionsItem>
+                <NDescriptionsItem label="材料录入时间">
+                  {{ receiverPrintTask?.materialRecordTime || '-' }}
+                </NDescriptionsItem>
+                <NDescriptionsItem label="打印完成照片" :span="3">
+                  <BizFileViewer
+                    v-if="receiverPrintTask?.finishPhotoFileIds"
+                    :file-ids="receiverPrintTask.finishPhotoFileIds"
+                    mode="image"
+                    :max="10"
+                    :thumb-size="72"
+                    show-name
+                  />
+                  <span v-else>-</span>
                 </NDescriptionsItem>
                 <NDescriptionsItem label="发货状态">
                   {{ deliveryStatusText(currentOrder.deliveryStatus) }}
@@ -2133,6 +2402,30 @@ function timelineType(value?: string) {
                   {{ currentOrder.deliveredTime || '-' }}
                 </NDescriptionsItem>
               </NDescriptions>
+            </NCard>
+
+            <NCard title="打印规格与材料明细" size="small">
+              <NDataTable
+                v-if="receiverPrintSpecs.length > 0"
+                size="small"
+                :columns="[
+                  { title: '高度/cm', key: 'heightCm', width: 100, render: row => money(row.heightCm) },
+                  { title: '件数', key: 'quantity', width: 80, render: () => '1件' },
+                  { title: '预估克数', key: 'estimatedWeightG', width: 110, render: row => row.estimatedWeightG ?? '-' },
+                  { title: '预估金额', key: 'estimatedAmount', width: 110, render: row => money(row.estimatedAmount) },
+                  { title: '实体克数', key: 'actualEntityWeightG', width: 110, render: row => row.actualEntityWeightG ?? '-' },
+                  { title: '支撑克数', key: 'actualSupportWeightG', width: 110, render: row => row.actualSupportWeightG ?? '-' },
+                  { title: '实体单价', key: 'actualEntityUnitPrice', width: 110, render: row => money(row.actualEntityUnitPrice) },
+                  { title: '支撑单价', key: 'actualSupportUnitPrice', width: 110, render: row => money(row.actualSupportUnitPrice) },
+                  { title: '打印费用', key: 'actualAmount', width: 110, render: row => money(row.actualAmount) },
+                  { title: '实体称重照片', key: 'actualEntityWeightPhotoFileIds', width: 150, render: row => h(BizFileViewer, { fileIds: row.actualEntityWeightPhotoFileIds, mode: 'image', max: 3, thumbSize: 48 }) },
+                  { title: '支撑称重照片', key: 'actualSupportWeightPhotoFileIds', width: 150, render: row => h(BizFileViewer, { fileIds: row.actualSupportWeightPhotoFileIds, mode: 'image', max: 3, thumbSize: 48 }) },
+                  { title: '备注', key: 'materialRemark', minWidth: 160, render: row => row.materialRemark || row.remark || '-' }
+                ]"
+                :data="receiverPrintSpecs"
+                :scroll-x="1430"
+              />
+              <NEmpty v-else description="暂无打印规格与材料明细" />
             </NCard>
 
             <NCard
@@ -2275,9 +2568,25 @@ function timelineType(value?: string) {
                 </NCard>
 
                 <NCard v-if="canReviewEffect" title="修模效果图审核" embedded size="small">
-                  <NSpace>
-                    <NButton type="success" @click="openEffectReviewModal('APPROVE')">审核通过</NButton>
-                    <NButton type="error" ghost @click="openEffectReviewModal('REJECT')">驳回</NButton>
+                  <NSpace vertical :size="12">
+                    <BizFileViewer
+                      v-if="repairEffectReviewFileIds.length"
+                      :file-ids="repairEffectReviewFileIds"
+                      mode="auto"
+                      :max="20"
+                      :thumb-size="96"
+                      show-name
+                    />
+
+                    <NEmpty
+                      v-else
+                      description="暂无接单方提交的效果图或效果视频"
+                    />
+
+                    <NSpace>
+                      <NButton type="success" @click="openEffectReviewModal('APPROVE')">审核通过</NButton>
+                      <NButton type="error" ghost @click="openEffectReviewModal('REJECT')">驳回</NButton>
+                    </NSpace>
                   </NSpace>
                 </NCard>
 
@@ -2295,7 +2604,44 @@ function timelineType(value?: string) {
                   </NForm>
                 </NCard>
 
+                <NCard v-if="canSyncDeliveryInfo" title="同步收货信息" embedded size="small">
+                  <NForm label-placement="left" label-width="120px">
+                    <NFormItem label="发货方式" required>
+                      <NSelect v-model:value="deliveryInfoForm.deliveryType" :options="deliveryTypeOptions" />
+                    </NFormItem>
+                    <NFormItem label="收件人" required>
+                      <NInput v-model:value="deliveryInfoForm.receiverName" placeholder="请输入收件人" />
+                    </NFormItem>
+                    <NFormItem label="收件电话" required>
+                      <NInput v-model:value="deliveryInfoForm.receiverPhone" placeholder="请输入收件电话" />
+                    </NFormItem>
+                    <NFormItem label="收件地址" required>
+                      <NInput v-model:value="deliveryInfoForm.receiverAddress" type="textarea" placeholder="请输入收件地址" />
+                    </NFormItem>
+                    <NFormItem label="备注">
+                      <NInput v-model:value="deliveryInfoForm.remark" type="textarea" placeholder="请输入备注" />
+                    </NFormItem>
+                    <NFormItem>
+                      <NButton type="primary" :loading="submittingDeliveryInfo" @click="submitDeliveryInfo">同步给接单方</NButton>
+                    </NFormItem>
+                  </NForm>
+                </NCard>
+
                 <NCard v-if="canDelivery" title="同步发货信息" embedded size="small">
+                  <NDescriptions bordered size="small" :column="1" style="margin-bottom: 12px">
+                    <NDescriptionsItem label="发货方式">
+                      {{ deliveryTypeText(currentOrder.deliveryTypeSnapshot) }}
+                    </NDescriptionsItem>
+                    <NDescriptionsItem label="收件人">
+                      {{ currentOrder.receiverNameSnapshot || '-' }}
+                    </NDescriptionsItem>
+                    <NDescriptionsItem label="收件电话">
+                      {{ currentOrder.receiverPhoneSnapshot || '-' }}
+                    </NDescriptionsItem>
+                    <NDescriptionsItem label="收件地址">
+                      {{ currentOrder.receiverAddressSnapshot || '-' }}
+                    </NDescriptionsItem>
+                  </NDescriptions>
                   <NForm label-placement="left" label-width="120px">
                     <NFormItem label="物流公司" required>
                       <NInput v-model:value="deliveryForm.logisticsCompany" placeholder="请输入物流公司" />
@@ -2327,7 +2673,7 @@ function timelineType(value?: string) {
                 </NCard>
 
                 <NAlert
-                  v-if="!canAcceptOrReject && !canSubmitHd && !canReviewHd && !canSubmitEffect && !canReviewEffect && !canSyncPrint && !canDelivery"
+                  v-if="!canAcceptOrReject && !canSubmitHd && !canReviewHd && !canSubmitEffect && !canReviewEffect && !canSyncPrint && !canSyncDeliveryInfo && !canDelivery"
                   type="info"
                   show-icon
                 >
@@ -2407,15 +2753,57 @@ function timelineType(value?: string) {
     </NModal>
 
     <NModal v-model:show="showEffectReviewModal" preset="card" :title="effectReviewForm.result === 'APPROVE' ? '审核通过效果图' : '驳回效果图'" :style="{ width: '520px' }">
+      <NSpace vertical :size="12">
+        <BizFileViewer
+          v-if="repairEffectReviewFileIds.length"
+          :file-ids="repairEffectReviewFileIds"
+          mode="auto"
+          :max="20"
+          :thumb-size="88"
+          show-name
+        />
+
+        <NEmpty
+          v-else
+          description="暂无接单方提交的效果图或效果视频"
+        />
+      </NSpace>
+
       <NForm label-placement="left" label-width="90px">
         <NFormItem label="审核备注">
           <NInput v-model:value="effectReviewForm.comment" type="textarea" placeholder="请输入审核备注" />
+        </NFormItem>
+        <NFormItem v-if="effectReviewForm.result === 'REJECT'" label="驳回附件" required>
+          <BizFileUpload
+            v-model="effectRejectAttachmentFileIds"
+            biz-type="COLLAB_ORDER"
+            :biz-id="currentOrderId"
+            file-stage="REPAIR_REVIEW"
+            file-type="PREVIEW_REVIEW_ATTACHMENT"
+            accept="image/*"
+            :max="10"
+          />
         </NFormItem>
       </NForm>
 
       <template #footer>
         <NSpace justify="end">
           <NButton @click="showEffectReviewModal = false">取消</NButton>
+          <NButton
+            v-if="effectReviewForm.result === 'APPROVE'"
+            type="error"
+            ghost
+            @click="switchEffectReviewResult('REJECT')"
+          >
+            驳回
+          </NButton>
+          <NButton
+            v-else
+            ghost
+            @click="switchEffectReviewResult('APPROVE')"
+          >
+            改为通过
+          </NButton>
           <NButton :type="effectReviewForm.result === 'APPROVE' ? 'success' : 'error'" :loading="submittingReview" @click="submitEffectReviewResult">
             {{ effectReviewForm.result === 'APPROVE' ? '审核通过' : '确认驳回' }}
           </NButton>
@@ -2627,6 +3015,19 @@ function timelineType(value?: string) {
   font-size: 12px;
   line-height: 1.4;
   word-break: break-all;
+}
+
+.amount-cell {
+  line-height: 1.5;
+}
+
+.amount-total {
+  font-weight: 600;
+}
+
+.amount-sub {
+  color: #666;
+  font-size: 12px;
 }
 
 .mt-8px {

@@ -107,7 +107,7 @@ export const useAuthStore = defineStore(SetupStoreId.Auth, () => {
 
     const loginData: Api.Auth.PwdLoginForm = {
       ...loginForm,
-      tenantId: loginForm.tenantId ?? '000000',
+      tenantId: loginForm.tenantId || '',
       clientId: VITE_APP_CLIENT_ID!,
       grantType: loginForm.grantType ?? 'password'
     };

@@ -18,6 +18,14 @@ export interface RepairTaskVO {
   taskNo?: string;
   orderId?: string | number;
   orderNoSnapshot?: string;
+  sourceBizType?: string;
+  sourceBizId?: string | number;
+  sourceBizNo?: string;
+  sourceTenantId?: string;
+  sourceTenantNameSnapshot?: string;
+  collabOrderStatus?: string;
+  collabSenderReviewStatus?: string;
+  collabReceiverInternalReviewStatus?: string;
   customerNameSnapshot?: string;
   productNameSnapshot?: string;
   orderType?: string;
@@ -26,6 +34,7 @@ export interface RepairTaskVO {
 
   assigneeUserId?: string | number;
   assigneeName?: string;
+  assigneeType?: string;
 
   quoteHdAmount?: number;
   quoteAiAmount?: number;
@@ -151,16 +160,21 @@ export function assignRepairTask(id: string | number, data: any) {
 }
 
 export function submitRepairTask(id: string | number, data: any) {
+  const { outputFileIds, ...rest } = data || {};
+
   return request<any>({
-    url: `/biz/repair-task/${id}/submit`,
+    url: `/biz/repair-task/${id}/submit-preview`,
     method: 'post',
-    data
+    data: {
+      ...rest,
+      previewFileIds: rest.previewFileIds ?? outputFileIds
+    }
   });
 }
 
 export function reviewRepairTask(id: string | number, data: any) {
   return request<any>({
-    url: `/biz/repair-task/${id}/review`,
+    url: `/biz/repair-task/${id}/review-preview`,
     method: 'post',
     data
   });
@@ -227,4 +241,3 @@ export function checkRepairModel(id: string | number, data: any) {
     data
   });
 }
-

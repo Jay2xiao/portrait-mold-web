@@ -27,11 +27,14 @@ import {
   deleteOrder,
   fetchOrderList,
   fetchOrderTimeline,
+  fetchOrderDetail,
   type BizOrderStageRouteSaveItem,
   type BizOrderStageRouteVo,
   type OrderForm,
+  type OrderPrintSpec,
   type OrderVO,
-  updateOrder, fetchOrderStageRoutes
+  updateOrder, fetchOrderStageRoutes,
+  updateOrderRepairPerformance
 } from '@/service/api/biz/order';
 
 import {
@@ -42,7 +45,7 @@ import {
 } from '@/service/api/biz/delivery';
 
 import { fetchCollabPartnerList } from '@/service/api/biz/collab';
-import { submitCollabHdReview } from '@/service/api/biz/collab-order';
+import { deliveryCollabOrder, submitCollabHdReview } from '@/service/api/biz/collab-order';
 
 
 import {fetchCustomerList} from '@/service/api/biz/customer';
@@ -90,6 +93,18 @@ const originalImageFileIds = ref<Array<string | number>>([]);
 const remarkImageFileIds = ref<Array<string | number>>([]);
 const aiBaseModelFileIds = ref<Array<string | number>>([]);
 const printInputModelFileIds = ref<Array<string | number>>([]);
+
+type PrintSpecFormItem = {
+  id?: string | number;
+  heightCm: number | null;
+  quantity: number | null;
+  estimatedWeightG: number | null;
+  estimatedAmount: number | null;
+  remark: string;
+};
+
+const printSpecs = ref<PrintSpecFormItem[]>([]);
+
 const showDeliveryModal = ref(false);
 const currentOrder = ref<OrderVO | null>(null);
 
@@ -237,6 +252,7 @@ const businessStatusOptions = [
   { label: '待模型检测', value: 'WAIT_MODEL_CHECK' },
   { label: '待打印审核', value: 'WAIT_PRINT_QC' },
   { label: '待打印', value: 'WAIT_PRINT' },
+  { label: '待发打印协作', value: 'WAIT_PRINT_COLLAB_SEND' },
   { label: '打印中', value: 'PRINTING' },
   { label: '待材料录入', value: 'WAIT_MATERIAL_RECORD' },
   { label: '待发货', value: 'WAIT_DELIVERY' },
@@ -282,6 +298,13 @@ const assignRepairerForm = reactive({
   remark: ''
 });
 
+const showRepairPerformanceModal = ref(false);
+const repairPerformanceOrder = ref<OrderVO | null>(null);
+const repairPerformanceForm = reactive({
+  repairManualAmount: 0,
+  remark: ''
+});
+
 async function openAssignRepairer(row: OrderVO) {
   assignRepairerOrder.value = row;
   assignRepairerForm.repairerUserId = undefined;
@@ -307,6 +330,24 @@ async function submitAssignRepairer() {
   showAssignRepairerModal.value = false;
   getList();
 }
+
+function openRepairPerformance(row: OrderVO) {
+  repairPerformanceOrder.value = row;
+  repairPerformanceForm.repairManualAmount = toNumber(row.repairManualAmount);
+  repairPerformanceForm.remark = '';
+  showRepairPerformanceModal.value = true;
+}
+
+async function submitRepairPerformance() {
+  if (!repairPerformanceOrder.value?.id) return;
+  await updateOrderRepairPerformance(repairPerformanceOrder.value.id, {
+    repairManualAmount: repairPerformanceForm.repairManualAmount || 0,
+    remark: repairPerformanceForm.remark
+  });
+  message.success('修模师业绩已更新');
+  showRepairPerformanceModal.value = false;
+  getList();
+}
 const showResubmitPrintModelModal = ref(false);
 const resubmitPrintModelOrder = ref<OrderVO | null>(null);
 const resubmitPrintModelFileIds = ref<Array<string | number>>([]);
@@ -325,6 +366,84 @@ function needRepair() {
 
 function needPrint() {
   return form.orderType === 'PRINT_ONLY' || form.orderType === 'REPAIR_PRINT';
+}
+
+function blankPrintSpec(): PrintSpecFormItem {
+  return {
+    heightCm: null,
+    quantity: 1,
+    estimatedWeightG: null,
+    estimatedAmount: null,
+    remark: ''
+  };
+}
+
+function hasPrintSpecInput(item: PrintSpecFormItem) {
+  return item.heightCm !== null
+    || item.estimatedWeightG !== null
+    || item.estimatedAmount !== null
+    || Boolean(item.remark);
+}
+
+function normalizePrintSpecsForForm(specs?: OrderPrintSpec[]): PrintSpecFormItem[] {
+  const rows = (specs || []).map(item => ({
+    id: item.id,
+    heightCm: item.heightCm === undefined || item.heightCm === null ? null : Number(item.heightCm),
+    quantity: 1,
+    estimatedWeightG: item.estimatedWeightG === undefined || item.estimatedWeightG === null ? null : Number(item.estimatedWeightG),
+    estimatedAmount: item.estimatedAmount === undefined || item.estimatedAmount === null ? null : Number(item.estimatedAmount),
+    remark: item.remark || ''
+  }));
+
+  return rows.length > 0 ? rows : [blankPrintSpec()];
+}
+
+function addPrintSpec() {
+  printSpecs.value.push(blankPrintSpec());
+}
+
+function removePrintSpec(index: number) {
+  if (printSpecs.value.length <= 1) {
+    printSpecs.value = [blankPrintSpec()];
+    return;
+  }
+  printSpecs.value.splice(index, 1);
+}
+
+function validateOrderPrintSpecs() {
+  if (!needPrint()) {
+    return true;
+  }
+
+  for (const [index, item] of printSpecs.value.entries()) {
+    if (!hasPrintSpecInput(item)) {
+      continue;
+    }
+    if (!item.heightCm || item.heightCm <= 0) {
+      message.warning(`第 ${index + 1} 条打印规格高度必须大于 0`);
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function buildPrintSpecsPayload() {
+  if (!needPrint()) {
+    return [];
+  }
+
+  return printSpecs.value
+    .filter(hasPrintSpecInput)
+    .map((item, index) => ({
+      id: item.id,
+      heightCm: item.heightCm,
+      quantity: 1,
+      estimatedWeightG: item.estimatedWeightG,
+      estimatedAmount: item.estimatedAmount,
+      sortNo: index,
+      remark: item.remark || ''
+    }));
 }
 
 function orderTypeLabel(value?: string) {
@@ -489,7 +608,7 @@ function businessStatusTagType(value?: string) {
     return 'warning';
   }
 
-  if (['WAIT_HD_REVIEW', 'WAIT_DELIVERY'].includes(String(value))) {
+  if (['WAIT_HD_REVIEW', 'WAIT_DELIVERY', 'WAIT_PRINT_COLLAB_SEND'].includes(String(value))) {
     return 'info';
   }
 
@@ -641,6 +760,13 @@ function buildMoreActionOptions(row: OrderVO) {
     });
   }
 
+  if (row.orderType === 'REPAIR_ONLY' || row.orderType === 'REPAIR_PRINT' || row.repairManualAmount !== undefined) {
+    options.push({
+      label: '修改修模师业绩',
+      key: 'repairPerformance'
+    });
+  }
+
   options.push({
     label: '日志',
     key: 'timeline'
@@ -672,6 +798,11 @@ function handleMoreOrderAction(key: string, row: OrderVO) {
 
   if (key === 'timeline') {
     handleTimeline(row);
+    return;
+  }
+
+  if (key === 'repairPerformance') {
+    openRepairPerformance(row);
     return;
   }
 
@@ -1253,6 +1384,9 @@ async function handleRepairSourceChange() {
 
 async function handleOrderTypeChange() {
   syncStageRoutesByOrderType();
+  if (needPrint() && printSpecs.value.length === 0) {
+    printSpecs.value = [blankPrintSpec()];
+  }
 
   if (!needRepair()) {
     form.repairAssigneeUserId = undefined;
@@ -1401,6 +1535,7 @@ function resetForm() {
   remarkImageFileIds.value = [];
   aiBaseModelFileIds.value = [];
   printInputModelFileIds.value = [];
+  printSpecs.value = [blankPrintSpec()];
   stageRoutes.value = buildDefaultStageRoutes('REPAIR_PRINT');
 
 }
@@ -1428,6 +1563,7 @@ function assignOrderToForm(row: OrderVO) {
   form.repairSource = row.repairSource || 'INTERNAL';
   form.payStatus = row.payStatus || 'UNPAID';
   form.applyCostRule = false;
+  printSpecs.value = normalizePrintSpecsForForm(row.printSpecs);
 }
 
 async function handleAdd() {
@@ -1456,9 +1592,13 @@ async function handleEdit(row: OrderVO) {
     loadProductTypes()
   ]);
 
-  assignOrderToForm(row);
+  const detailRes = row.id ? await fetchOrderDetail(row.id) : null;
+  const detailData = detailRes ? unwrapData(detailRes) : null;
+  const detailOrder = detailData?.order || detailData || row;
 
-  oldPayStatus.value = row.payStatus || 'UNPAID';
+  assignOrderToForm(detailOrder);
+
+  oldPayStatus.value = detailOrder.payStatus || 'UNPAID';
 
   await Promise.all([
     loadRepairersBySource(),
@@ -1502,13 +1642,18 @@ async function handleSubmit() {
     return;
   }
 
+  if (!validateOrderPrintSpecs()) {
+    return;
+  }
+
   const submitData = {
     ...form,
     originalImageFileIds: originalImageFileIds.value.join(','),
     remarkImageFileIds: remarkImageFileIds.value.join(','),
     aiBaseModelFileIds: aiBaseModelFileIds.value.join(','),
     printInputModelFileIds: printInputModelFileIds.value.join(','),
-    stageRoutes: buildStageRoutePayload()
+    stageRoutes: buildStageRoutePayload(),
+    printSpecs: buildPrintSpecsPayload()
   };
 
   if (form.id) {
@@ -1603,10 +1748,25 @@ async function submitDelivery() {
     }
   }
 
-  await deliverOrder(currentOrder.value.id, {
-    ...deliveryForm,
-    deliveryProofFileIds: deliveryProofFileIdList.value.join(',')
-  });
+  if (isCollabInternalOrder(currentOrder.value) && !currentOrder.value.sourceBizId) {
+    message.error('协作单ID缺失，无法同步发货');
+    return;
+  }
+
+  if (isCollabInternalOrder(currentOrder.value)) {
+    const collabOrderId = currentOrder.value.sourceBizId!;
+    await deliveryCollabOrder(collabOrderId, {
+      logisticsCompany: deliveryForm.expressCompany,
+      logisticsNo: deliveryForm.trackingNo,
+      fileIds: deliveryProofFileIdList.value,
+      remark: deliveryForm.remark
+    });
+  } else {
+    await deliverOrder(currentOrder.value.id, {
+      ...deliveryForm,
+      deliveryProofFileIds: deliveryProofFileIdList.value.join(',')
+    });
+  }
 
   message.success('发货/交付成功');
   showDeliveryModal.value = false;
@@ -1777,7 +1937,7 @@ watch(
       />
     </NSpace>
 
-    <NModal v-model:show="showModal" preset="card" :title="modalTitle" style="width: 1080px">
+    <NModal v-model:show="showModal" preset="card" :title="modalTitle" style="width: min(1180px, 96vw)">
       <NSpace vertical :size="12">
         <NAlert v-if="isPaidLocked" type="warning" title="订单已支付">
           当前订单已支付，普通编辑已锁定。如需修改，请后续走订单调整流程。
@@ -2147,6 +2307,103 @@ watch(
                     </NFormItem>
                   </NGridItem>
                 </NGrid>
+
+                <NCard title="打印规格" size="small" style="margin-top: 12px">
+                  <NSpace vertical :size="10">
+                    <NAlert type="info">
+                      每条打印规格代表 1 件打印物；同样大小需要多打时也请新增多条规格，便于后续逐件录入真实克重。
+                    </NAlert>
+
+                    <NGrid
+                      v-for="(item, index) in printSpecs"
+                      :key="index"
+                      :cols="24"
+                      :x-gap="12"
+                      :y-gap="8"
+                      responsive="screen"
+                    >
+                      <NGridItem :span="6">
+                        <NFormItem label="高度/cm">
+                          <NInputNumber
+                            v-model:value="item.heightCm"
+                            :min="0"
+                            :precision="2"
+                            :show-button="false"
+                            :disabled="isPaidLocked"
+                            style="width: 100%"
+                          />
+                        </NFormItem>
+                      </NGridItem>
+
+                      <NGridItem :span="4">
+                        <NFormItem label="数量">
+                          <NInputNumber
+                            v-model:value="item.quantity"
+                            :min="1"
+                            :precision="0"
+                            :show-button="false"
+                            disabled
+                            style="width: 100%"
+                          />
+                        </NFormItem>
+                      </NGridItem>
+
+                      <NGridItem :span="7">
+                        <NFormItem label="预估克重/g">
+                          <NInputNumber
+                            v-model:value="item.estimatedWeightG"
+                            :min="0"
+                            :precision="2"
+                            :show-button="false"
+                            :disabled="isPaidLocked"
+                            style="width: 100%"
+                          />
+                        </NFormItem>
+                      </NGridItem>
+
+                      <NGridItem :span="7">
+                        <NFormItem label="预估金额">
+                          <NInputNumber
+                            v-model:value="item.estimatedAmount"
+                            :min="0"
+                            :precision="2"
+                            :show-button="false"
+                            :disabled="isPaidLocked"
+                            style="width: 100%"
+                          />
+                        </NFormItem>
+                      </NGridItem>
+
+                      <NGridItem :span="20">
+                        <NFormItem label="备注">
+                          <NInput
+                            v-model:value="item.remark"
+                            :disabled="isPaidLocked"
+                            placeholder="规格说明"
+                          />
+                        </NFormItem>
+                      </NGridItem>
+
+                      <NGridItem :span="4">
+                        <NFormItem label="操作">
+                          <NButton
+                            size="small"
+                            tertiary
+                            type="error"
+                            :disabled="isPaidLocked"
+                            @click="removePrintSpec(index)"
+                          >
+                            删除
+                          </NButton>
+                        </NFormItem>
+                      </NGridItem>
+                    </NGrid>
+
+                    <NButton size="small" type="primary" ghost :disabled="isPaidLocked" @click="addPrintSpec">
+                      新增打印规格
+                    </NButton>
+                  </NSpace>
+                </NCard>
               </template>
             </NForm>
           </NTabPane>
@@ -2492,9 +2749,42 @@ watch(
       </template>
     </NModal>
 
+    <NModal v-model:show="showRepairPerformanceModal" preset="card" title="修改修模师业绩" style="width: 520px">
+      <NForm label-placement="left" label-width="120">
+        <NFormItem label="订单号">
+          <NInput :value="repairPerformanceOrder?.orderNo || '-'" disabled />
+        </NFormItem>
+
+        <NFormItem label="修模师业绩" required>
+          <NInputNumber
+            v-model:value="repairPerformanceForm.repairManualAmount"
+            :min="0"
+            :precision="2"
+            style="width: 220px"
+          />
+        </NFormItem>
+
+        <NFormItem label="备注">
+          <NInput
+            v-model:value="repairPerformanceForm.remark"
+            type="textarea"
+            placeholder="请输入调整原因"
+          />
+        </NFormItem>
+      </NForm>
+
+      <template #footer>
+        <NSpace justify="end">
+          <NButton @click="showRepairPerformanceModal = false">取消</NButton>
+          <NButton type="primary" @click="submitRepairPerformance">确认修改</NButton>
+        </NSpace>
+      </template>
+    </NModal>
+
     <OrderDetailDrawer
       v-model:show="showOrderDetailDrawer"
       :order-id="detailOrderId"
+      @edit="handleEdit"
     />
 
     <NModal
@@ -2592,5 +2882,3 @@ watch(
   </NCard>
 
 </template>
-
-

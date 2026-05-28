@@ -17,12 +17,21 @@ import {
   useMessage
 } from 'naive-ui';
 
-import {fetchUnbilledReceivableItems,fetchReceivableItemList, type ReceivableItemVO} from '@/service/api/biz/receivable-item';
+import {
+  fetchReceivableCounterpartyOptions,
+  fetchReceivableItemList,
+  fetchUnbilledReceivableItems,
+  type ReceivableItemVO
+} from '@/service/api/biz/receivable-item';
 
 import {createCustomerBill} from '@/service/api/biz/customer-bill';
 import {fetchCustomerList} from '@/service/api/biz/customer';
 
 type RowKey = string | number;
+type CounterpartyOption = {
+  label: string;
+  value: string;
+};
 
 const message = useMessage();
 
@@ -34,11 +43,14 @@ const total = ref(0);
 const checkedRowKeys = ref<RowKey[]>([]);
 
 const customerOptions = ref<any[]>([]);
+const counterpartyOptions = ref<CounterpartyOption[]>([]);
 
 const queryParams = reactive({
   pageNum: 1,
   pageSize: 10,
+  counterpartyKey: undefined as string | undefined,
   customerId: undefined as string | number | undefined,
+  customerNameSnapshot: '',
   orderNoSnapshot: '',
   itemType: '',
   billStatus: '',
@@ -177,6 +189,10 @@ const selectedCustomerIds = computed(() => {
   );
 });
 
+const hasCollabReceivableSelected = computed(() => {
+  return selectedRows.value.some(row => row.customerId === undefined || row.customerId === null);
+});
+
 /**
  * 已选金额
  */
@@ -284,24 +300,61 @@ const columns: DataTableColumns<ReceivableItemVO> = [
 ];
 
 async function loadCustomers() {
-  const res = await fetchCustomerList({
-    pageNum: 1,
-    pageSize: 999
-  } as any);
+  const [customerRes, counterpartyRes] = await Promise.all([
+    fetchCustomerList({
+      pageNum: 1,
+      pageSize: 999
+    } as any),
+    fetchReceivableCounterpartyOptions()
+  ]);
 
-  const rows = unwrapRows(res);
+  const rows = unwrapRows(customerRes);
 
   customerOptions.value = rows.map((item: any) => ({
     label: `${item.customerName || ''} ${item.phone || ''}`,
     value: item.id
   }));
+
+  const collabRows = unwrapRows(counterpartyRes);
+  counterpartyOptions.value = [
+    ...customerOptions.value.map((item: any) => ({
+      label: `客户：${item.label}`,
+      value: `CUSTOMER:${item.value}`
+    })),
+    ...collabRows.map((item: any) => {
+      const name = item.name || item.label || item.value;
+      return {
+        label: `协作商家：${name}`,
+        value: `COLLAB:${name}`
+      };
+    })
+  ];
+}
+
+function buildListParams() {
+  const params: any = {
+    ...queryParams,
+    customerId: undefined,
+    customerNameSnapshot: undefined
+  };
+
+  delete params.counterpartyKey;
+
+  const key = queryParams.counterpartyKey;
+  if (key?.startsWith('CUSTOMER:')) {
+    params.customerId = key.slice('CUSTOMER:'.length);
+  } else if (key?.startsWith('COLLAB:')) {
+    params.customerNameSnapshot = key.slice('COLLAB:'.length);
+  }
+
+  return params;
 }
 
 async function getList() {
   loading.value = true;
 
   try {
-    const res = await fetchReceivableItemList(queryParams);
+    const res = await fetchReceivableItemList(buildListParams());
     tableData.value = unwrapRows(res);
     total.value = unwrapTotal(res);
     checkedRowKeys.value = [];
@@ -311,7 +364,9 @@ async function getList() {
 }
 
 function resetQuery() {
+  queryParams.counterpartyKey = undefined;
   queryParams.customerId = undefined;
+  queryParams.customerNameSnapshot = '';
   queryParams.orderNoSnapshot = '';
   queryParams.itemType = '';
   queryParams.payStatus = '';
@@ -332,6 +387,11 @@ function openCreateBill() {
 
   if (invalid) {
     message.warning('只能选择未入账、未收清的应收项目生成账单');
+    return;
+  }
+
+  if (hasCollabReceivableSelected.value) {
+    message.warning('协作商家应收请走协作账单/协作付款流程，不能生成普通客户账单');
     return;
   }
 
@@ -360,6 +420,11 @@ async function submitCreateBill() {
 
   if (selectedCustomerIds.value.length > 1) {
     message.warning('只能选择同一个客户的应收项目生成账单');
+    return;
+  }
+
+  if (hasCollabReceivableSelected.value) {
+    message.warning('协作商家应收请走协作账单/协作付款流程，不能生成普通客户账单');
     return;
   }
 
@@ -422,10 +487,10 @@ onMounted(async () => {
       </NAlert>
 
       <NForm inline label-placement="left">
-        <NFormItem label="客户">
+        <NFormItem label="客户/协作商家">
           <NSelect
-            v-model:value="queryParams.customerId"
-            :options="customerOptions"
+            v-model:value="queryParams.counterpartyKey"
+            :options="counterpartyOptions"
             filterable
             clearable
             style="width: 220px"

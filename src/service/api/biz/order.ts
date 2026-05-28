@@ -89,6 +89,7 @@ export interface OrderVO {
 
   routeSummaryMode?: string;
   stageRoutes?: BizOrderStageRouteSaveItem[];
+  printSpecs?: OrderPrintSpec[];
 
   sourceBizType?: string;
   sourceBizId?: string | number;
@@ -125,6 +126,18 @@ export interface OrderVO {
   pendingExternalRouteCount?: number;
   dispatchedExternalRouteCount?: number;
 
+}
+
+export interface OrderPrintSpec {
+  id?: string | number;
+  orderId?: string | number;
+  orderNoSnapshot?: string;
+  heightCm?: number | null;
+  quantity?: number | null;
+  estimatedWeightG?: number | null;
+  estimatedAmount?: number | null;
+  sortNo?: number;
+  remark?: string;
 }
 
 export type OrderForm = Partial<OrderVO>;
@@ -178,6 +191,17 @@ export function fetchOrderTimeline(id: string | number) {
 export function assignOrderRepairer(id: string | number, data: any) {
   return request<any>({
     url: `/biz/order/${id}/assign-repairer`,
+    method: 'post',
+    data
+  });
+}
+
+export function updateOrderRepairPerformance(
+  id: string | number,
+  data: { repairManualAmount: number; remark?: string }
+) {
+  return request<any>({
+    url: `/biz/order/${id}/repair-performance`,
     method: 'post',
     data
   });

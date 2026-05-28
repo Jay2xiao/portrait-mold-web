@@ -81,6 +81,8 @@ export interface CollabBillQueryParams {
   billStatus?: string;
   payStatus?: string;
   keyword?: string;
+  roleType?: 'SENT' | 'RECEIVED' | string;
+  counterpartyTenantId?: string;
   pageNum?: number;
   pageSize?: number;
 }

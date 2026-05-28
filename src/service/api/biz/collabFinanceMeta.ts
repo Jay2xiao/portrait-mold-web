@@ -148,19 +148,29 @@ export function parseProofFileIds(value?: string | null): string[] {
     return [];
   }
 
-  try {
-    const parsed = JSON.parse(value);
+  const text = String(value).trim();
 
-    if (Array.isArray(parsed)) {
-      return parsed.map(item => String(item));
-    }
-  } catch {
-    // ignore
+  if (!text) {
+    return [];
   }
 
-  return String(value)
+  if (text.startsWith('[') && text.endsWith(']')) {
+    const body = text.slice(1, -1).trim();
+
+    if (!body) {
+      return [];
+    }
+
+    const matches = body.match(/"([^"]+)"|'([^']+)'|[^,\s]+/g) || [];
+
+    return matches
+      .map(item => item.trim().replace(/^['"]|['"]$/g, ''))
+      .filter(Boolean);
+  }
+
+  return text.replace(/\s+/g, ',').replace(/\uFF0C/g, ',')
     .split(/[,，\s\n]+/)
-    .map(item => item.trim())
+    .map(item => item.trim().replace(/^['"]|['"]$/g, ''))
     .filter(Boolean);
 }
 

@@ -178,7 +178,7 @@ onMounted(load);
                     </NTag>
 
                     <span>高度：{{ spec.heightCm || '-' }} cm</span>
-                    <span>数量：{{ spec.quantity || 0 }} 个</span>
+                    <span>单件规格</span>
                     <span>参考克重：{{ weight(spec.estimatedWeightG) }} g</span>
                     <span>参考金额：{{ money(spec.estimatedAmount) }} 元</span>
                   </NSpace>
@@ -191,6 +191,17 @@ onMounted(load);
                     <NTag type="success" size="small" :bordered="false" round>
                       小计：{{ money(spec.actualAmount) }} 元
                     </NTag>
+                  </NSpace>
+
+                  <NSpace align="start" wrap>
+                    <div>
+                      <div style="margin-bottom: 4px; color: #666">实体称重照片</div>
+                      <BizFileThumbs :file-ids="spec.actualEntityWeightPhotoFileIds" mode="image" :max="3" />
+                    </div>
+                    <div>
+                      <div style="margin-bottom: 4px; color: #666">支撑称重照片</div>
+                      <BizFileThumbs :file-ids="spec.actualSupportWeightPhotoFileIds" mode="image" :max="3" />
+                    </div>
                   </NSpace>
 
                   <div v-if="spec.materialRemark" style="color: #666">

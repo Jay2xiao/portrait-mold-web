@@ -54,10 +54,17 @@ async function customRequest(options: UploadCustomRequestOptions) {
   }
 
   try {
-    const configRes = await fetchUploadConfig();
-    const config = configRes.data || configRes;
+    let storageType = 'LOCAL';
 
-    if (config.storageType === 'QINIU') {
+    try {
+      const configRes = await fetchUploadConfig();
+      const config = configRes.data || configRes;
+      storageType = String(config?.storageType || 'LOCAL').toUpperCase();
+    } catch (err) {
+      message.warning('鏂囦欢涓婁紶閰嶇疆澶辫触锛岃嚜鍔ㄥ垏鎹负鏈湴涓婁紶');
+    }
+
+    if (storageType === 'QINIU') {
       await uploadToQiniu(rawFile, options);
     } else {
       await uploadToLocal(rawFile, options);
@@ -83,11 +90,10 @@ async function uploadToQiniu(rawFile: File, options: UploadCustomRequestOptions)
 
   const tokenData = tokenRes.data || tokenRes;
 
-  // ✅ 强制指定 华南区(广州) 上传域名！！！
   const config = {
     useCdnDomain: false,
     region: qiniu.region.z2,
-    uploadURL: 'https://upload-z2.qiniup.com', // 👈 必须加这一行！
+    uploadURL: tokenData.uploadUrl || 'https://upload-z2.qiniup.com',
     forceDirect: true
   };
 

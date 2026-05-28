@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, h, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import {
   NAlert,
@@ -63,6 +63,10 @@ const stageRoutes = ref<BizOrderStageRouteVo[]>([]);
 const order = computed(() => detail.value?.order || {});
 const repairTasks = computed(() => detail.value?.repairTasks || []);
 const printTasks = computed(() => detail.value?.printTasks || []);
+const orderPrintSpecs = computed(() => order.value?.printSpecs || []);
+const hasPrintTaskSpecs = computed(() => {
+  return printTasks.value.some((task: any) => task.printSpecs && task.printSpecs.length);
+});
 const deliveryRecords = computed(() => detail.value?.deliveryRecords || []);
 const receivableItems = computed(() => detail.value?.receivableItems || []);
 const bills = computed(() => detail.value?.bills || []);
@@ -110,6 +114,14 @@ const canResubmitPrintModel = computed(() => {
   );
 });
 
+const canEditOrderPrintSpecs = computed(() => {
+  if (printTasks.value.length > 0) {
+    return false;
+  }
+
+  return !['WAIT_DELIVERY', 'DELIVERED', 'COMPLETED', 'CLOSED'].includes(order.value?.businessStatus || '');
+});
+
 function handleDrawerShowChange(value: boolean) {
   emit('update:show', value);
 
@@ -126,6 +138,12 @@ function clearData() {
 
 function close() {
   handleDrawerShowChange(false);
+}
+
+function editOrder() {
+  const row = order.value;
+  close();
+  emit('edit', row);
 }
 
 async function load() {
@@ -427,6 +445,7 @@ function businessStatusLabel(value?: string) {
     WAIT_PRINT_QC: '待打印检测',
     PRINT_QC_REJECTED: '打印检测驳回',
     WAIT_PRINT: '待打印',
+    WAIT_PRINT_COLLAB_SEND: '待发打印协作',
     PRINTING: '打印中',
     WAIT_MATERIAL_RECORD: '待材料录入',
     WAIT_DELIVERY: '待发货',
@@ -456,6 +475,18 @@ function payStatusLabel(value?: string) {
 
 function money(value?: number | string) {
   return Number(value || 0).toFixed(2);
+}
+
+function weight(value?: number | string) {
+  return `${Number(value || 0).toFixed(2)} g`;
+}
+
+function quantity(value?: number | string) {
+  if (value === null || value === undefined || value === '') {
+    return '-';
+  }
+
+  return Number(value || 0).toFixed(0);
 }
 
 function itemTypeLabel(value?: string) {
@@ -505,6 +536,36 @@ watch(
         />
 
         <NSpace v-else vertical :size="16">
+          <NCard title="打印规格" size="small">
+            <NSpace vertical :size="12">
+              <NSpace justify="space-between" align="center">
+                <div style="color: #888;">打印规格是生成打印任务和发打印协作的前置条件。</div>
+                <NButton
+                  v-if="canEditOrderPrintSpecs"
+                  size="small"
+                  type="primary"
+                  ghost
+                  @click="editOrder"
+                >
+                  补/编辑打印规格
+                </NButton>
+              </NSpace>
+              <NEmpty v-if="orderPrintSpecs.length === 0" description="暂无打印规格" />
+              <NDataTable
+                v-else
+                size="small"
+                :columns="[
+                  { title: '高度/cm', key: 'heightCm', width: 110, render: row => money(row.heightCm) },
+                  { title: '件数', key: 'quantity', width: 90, render: () => '1件' },
+                  { title: '预估克重/g', key: 'estimatedWeightG', width: 120, render: row => weight(row.estimatedWeightG) },
+                  { title: '预估金额', key: 'estimatedAmount', width: 120, render: row => money(row.estimatedAmount) },
+                  { title: '备注', key: 'remark', minWidth: 180, render: row => row.remark || '-' }
+                ]"
+                :data="orderPrintSpecs"
+                :scroll-x="620"
+              />
+            </NSpace>
+          </NCard>
 
           <!-- 基础信息 -->
           <NCard title="订单基础信息" size="small">
@@ -769,12 +830,62 @@ watch(
                     { title: '任务号', key: 'taskNo', width: 160 },
                     { title: '状态', key: 'status', width: 120 },
                     { title: '打印员', key: 'printerName', width: 120 },
+                    { title: '实体克重', key: 'entityWeightG', width: 110, render: row => weight(row.entityWeightG) },
+                    { title: '支撑克重', key: 'supportWeightG', width: 110, render: row => weight(row.supportWeightG) },
+                    { title: '实体单价', key: 'entityUnitPrice', width: 110, render: row => money(row.entityUnitPrice) },
+                    { title: '支撑单价', key: 'supportUnitPrice', width: 110, render: row => money(row.supportUnitPrice) },
+                    { title: '打印费用', key: 'finalAmount', width: 110, render: row => money(row.finalAmount) },
+                    { title: '材料录入时间', key: 'materialRecordTime', width: 170 },
                     { title: '开始时间', key: 'startTime', width: 170 },
                     { title: '完成时间', key: 'finishTime', width: 170 }
                   ]"
                   :data="printTasks"
-                  :scroll-x="800"
+                  :scroll-x="1370"
                 />
+
+                <NSpace
+                  v-if="hasPrintTaskSpecs"
+                  vertical
+                  :size="12"
+                  style="margin-top: 12px"
+                >
+                  <NCard
+                    v-for="task in printTasks"
+                    :key="task.id"
+                    size="small"
+                    :bordered="true"
+                  >
+                    <template #header>
+                      <NSpace align="center" wrap>
+                        <NTag type="info" size="small" :bordered="false">
+                          {{ task.taskNo || '打印任务' }}
+                        </NTag>
+                        <span>打印费用：{{ money(task.finalAmount) }}</span>
+                        <span>实体：{{ weight(task.entityWeightG) }} g</span>
+                        <span>支撑：{{ weight(task.supportWeightG) }} g</span>
+                      </NSpace>
+                    </template>
+
+                    <NDataTable
+                      v-if="task.printSpecs && task.printSpecs.length"
+                      size="small"
+                      :columns="[
+                        { title: '高度/cm', key: 'heightCm', width: 100, render: row => money(row.heightCm) },
+                        { title: '件数', key: 'quantity', width: 80, render: () => '1件' },
+                        { title: '实体克数', key: 'actualEntityWeightG', width: 110, render: row => weight(row.actualEntityWeightG) },
+                        { title: '支撑克数', key: 'actualSupportWeightG', width: 110, render: row => weight(row.actualSupportWeightG) },
+                        { title: '实体单价', key: 'actualEntityUnitPrice', width: 110, render: row => money(row.actualEntityUnitPrice) },
+                        { title: '支撑单价', key: 'actualSupportUnitPrice', width: 110, render: row => money(row.actualSupportUnitPrice) },
+                        { title: '小计', key: 'actualAmount', width: 110, render: row => money(row.actualAmount) },
+                        { title: '实体称重照片', key: 'actualEntityWeightPhotoFileIds', width: 150, render: row => h(BizFileThumbs, { fileIds: row.actualEntityWeightPhotoFileIds, mode: 'image', max: 3 }) },
+                        { title: '支撑称重照片', key: 'actualSupportWeightPhotoFileIds', width: 150, render: row => h(BizFileThumbs, { fileIds: row.actualSupportWeightPhotoFileIds, mode: 'image', max: 3 }) },
+                        { title: '备注', key: 'materialRemark', minWidth: 160, render: row => row.materialRemark || row.remark || '-' }
+                      ]"
+                      :data="task.printSpecs"
+                      :scroll-x="1190"
+                    />
+                  </NCard>
+                </NSpace>
               </NCard>
             </NSpace>
           </NCard>

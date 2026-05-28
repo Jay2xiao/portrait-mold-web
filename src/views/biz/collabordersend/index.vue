@@ -140,7 +140,7 @@
               />
             </NFormItem>
 
-            <NFormItem label="修模费用">
+            <NFormItem label="修模费用" :required="containsRepairStage">
               <NInputNumber
                 v-model:value="form.senderRepairFeeAmount"
                 :min="0"
@@ -286,7 +286,7 @@
             >
               <NSpace vertical :size="12">
                 <NAlert type="info" show-icon>
-                  仅打印模型资料包用于“只打印”协作。模型可以来自源订单已修好的模型，也可以手动上传压缩包。
+                  仅打印模型资料包只用于“打印”协作：如果源订单已完成内部修模，请选择“使用源订单已修好的模型”；如果上一道修模是外协完成，请选择“使用上一笔修模协作单模型”；没有可复用模型时再手动上传模型压缩包。
                 </NAlert>
 
                 <NFormItem label="模型来源" required>
@@ -295,20 +295,17 @@
                     :options="printModelSourceOptions"
                     placeholder="请选择打印模型来源"
                     style="width: 320px"
+                    @update:value="printModelSourceTouched = true"
                   />
                 </NFormItem>
 
-                <NFormItem
+                <NAlert
                   v-if="form.printModelSourceType === 'SOURCE_COLLAB_REPAIR_MODEL'"
-                  label="来源协作单ID"
-                  required
+                  type="success"
+                  show-icon
                 >
-<!--                  <NInput-->
-<!--                    v-model:value="form.printModelSourceId"-->
-<!--                    placeholder="请输入上一笔修模协作单ID，后续可优化为选择器"-->
-<!--                    style="width: 360px"-->
-<!--                  />-->
-                </NFormItem>
+                  系统将在发单时自动使用当前源订单上一笔已产出模型的修模协作单，无需手动输入协作单 ID。
+                </NAlert>
 
                 <NAlert
                   v-if="form.printModelSourceType === 'SOURCE_ORDER_REPAIR_MODEL'"
@@ -351,7 +348,7 @@
             >
               <NSpace vertical :size="12">
                 <NAlert type="warning" show-icon>
-                  打印规格用于告诉接单方需要打印哪些高度和数量。这里的预估克重和预估金额仅作参考，最终价格以打印完成后的真实材料录入为准。
+                  每条打印规格代表 1 件打印物；同样大小需要多打时也请新增多条规格，便于后续逐件录入真实克重。
                 </NAlert>
 
                 <NCard
@@ -393,6 +390,7 @@
                           v-model:value="item.quantity"
                           :min="1"
                           :precision="0"
+                          disabled
                           placeholder="如 1"
                           style="width: 140px"
                         />
@@ -567,6 +565,7 @@ const sourceOrderRows = ref<SourceOrderVO[]>([]);
 const sourceOrder = ref<SourceOrderVO | null>(null);
 const stageRoutes = ref<OrderStageRouteVO[]>([]);
 const selectedRouteKeys = ref<string[]>([]);
+const printModelSourceTouched = ref(false);
 
 const rawPhotoFileIds = ref<CollabId[]>([]);
 const hdPhotoFileIds = ref<CollabId[]>([]);
@@ -678,6 +677,47 @@ function fillFilesFromSourceOrder(order: any) {
   if (order.orderType === 'PRINT_ONLY' && order.printInputModelFileIds) {
     form.printModelSourceType = 'SOURCE_ORDER_PRINT_INPUT_MODEL';
   }
+}
+
+function fillPrintSpecsFromSourceOrder(order: any) {
+  const specs = Array.isArray(order?.printSpecs) ? order.printSpecs : [];
+
+  if (specs.length === 0) {
+    return;
+  }
+
+  printSpecs.value = specs.map((item: any) => ({
+    heightCm: item.heightCm === undefined || item.heightCm === null ? null : Number(item.heightCm),
+    quantity: 1,
+    estimatedWeightG: item.estimatedWeightG === undefined || item.estimatedWeightG === null ? null : Number(item.estimatedWeightG),
+    estimatedAmount: item.estimatedAmount === undefined || item.estimatedAmount === null ? null : Number(item.estimatedAmount),
+    remark: item.remark || ''
+  }));
+}
+
+function resolveDefaultPrintModelSourceType() {
+  if (sourceOrder.value?.orderType === 'PRINT_ONLY' && sourceOrder.value?.printInputModelFileIds) {
+    return 'SOURCE_ORDER_PRINT_INPUT_MODEL';
+  }
+
+  const repairRoute = stageRoutes.value.find(item => isRepairRoute(item));
+  if (repairRoute?.routeMode === 'EXTERNAL' && repairRoute?.collabOrderId) {
+    return 'SOURCE_COLLAB_REPAIR_MODEL';
+  }
+
+  return 'SOURCE_ORDER_REPAIR_MODEL';
+}
+
+function applyDefaultPrintModelSourceType(force = false) {
+  if (!containsPrintStage.value) {
+    return;
+  }
+
+  if (printModelSourceTouched.value && !force) {
+    return;
+  }
+
+  form.printModelSourceType = resolveDefaultPrintModelSourceType();
 }
 
 
@@ -798,6 +838,10 @@ const containsPrintStage = computed(() => {
   return actualServiceType.value === 'PRINT_ONLY' || actualServiceType.value === 'REPAIR_PRINT';
 });
 
+const containsRepairStage = computed(() => {
+  return actualServiceType.value === 'REPAIR_ONLY' || actualServiceType.value === 'REPAIR_PRINT';
+});
+
 const isPrintModelOnly = computed(() => {
   return form.materialPackageType === 'PRINT_MODEL_ONLY';
 });
@@ -857,6 +901,13 @@ watch(
   }
 );
 
+watch(
+  () => selectedRouteKeys.value.join(','),
+  () => {
+    applyDefaultPrintModelSourceType();
+  }
+);
+
 
 onMounted(() => {
   initPage();
@@ -908,6 +959,7 @@ async function loadSourceOrderDetail(orderId: CollabId) {
   sourceOrder.value = data || { id: orderId };
   upsertSourceOrderRow(sourceOrder.value);
   fillFilesFromSourceOrder(sourceOrder.value);
+  fillPrintSpecsFromSourceOrder(sourceOrder.value);
 
 }
 
@@ -968,12 +1020,15 @@ async function loadStageRoutes(orderId: CollabId, defaultSelectedKeys: string[] 
       const target = selectableRoutes.find(item => routeIdKey(item.id) === key);
       return !!target;
     });
+    applyDefaultPrintModelSourceType(true);
     return;
   }
 
   if (selectableRoutes.length === 1) {
     selectedRouteKeys.value = [routeIdKey(selectableRoutes[0].id)];
   }
+
+  applyDefaultPrintModelSourceType(true);
 }
 
 function canSelectRoute(item: OrderStageRouteVO) {
@@ -1027,7 +1082,7 @@ function buildPrintSpecsPayload() {
 
   return printSpecs.value.map((item, index) => ({
     heightCm: Number(item.heightCm || 0),
-    quantity: Number(item.quantity || 0),
+    quantity: 1,
     estimatedWeightG: item.estimatedWeightG === null || item.estimatedWeightG === undefined ? null : Number(item.estimatedWeightG),
     estimatedAmount: item.estimatedAmount === null || item.estimatedAmount === undefined ? null : Number(item.estimatedAmount),
     sortNo: index,
@@ -1061,6 +1116,11 @@ function validateBeforeSubmit() {
     message.warning('请选择资料包类型');
     return false;
   }
+  if (containsRepairStage.value && (!form.senderRepairFeeAmount || Number(form.senderRepairFeeAmount) <= 0)) {
+    message.warning('请填写修模费用');
+    return false;
+  }
+
   if (form.materialPackageType === 'PRINT_MODEL_ONLY') {
     if (!form.printModelSourceType) {
       message.warning('请选择打印模型来源');
@@ -1072,10 +1132,6 @@ function validateBeforeSubmit() {
       return false;
     }
 
-    if (form.printModelSourceType === 'SOURCE_COLLAB_REPAIR_MODEL' && !form.printModelSourceId) {
-      message.warning('请输入来源修模协作单 ID');
-      return false;
-    }
   }
 
   if (containsPrintStage.value) {
@@ -1090,10 +1146,6 @@ function validateBeforeSubmit() {
         return false;
       }
 
-      if (!item.quantity || Number(item.quantity) <= 0) {
-        message.warning(`第 ${Number(index) + 1} 条打印规格数量必须大于 0`);
-        return false;
-      }
     }
   }
 
@@ -1137,6 +1189,7 @@ function resetCollabForm() {
   form.title = '';
   form.requirementDesc = '';
   printModelArchiveFileIds.value = [];
+  printModelSourceTouched.value = false;
 
   printSpecs.value = [
     {

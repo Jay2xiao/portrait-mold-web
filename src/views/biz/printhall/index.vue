@@ -19,6 +19,7 @@ import {
 } from '@/service/api/biz/print-task';
 
 import BizFileViewer from '@/views/biz/components/BizFileViewer.vue';
+import PrintTaskDetailDrawer from '@/views/biz/components/PrintTaskDetailDrawer.vue';
 
 defineOptions({
   name: 'BizPrintHall'
@@ -29,6 +30,8 @@ const message = useMessage();
 const loading = ref(false);
 const tableData = ref<PrintTaskVO[]>([]);
 const total = ref(0);
+const showDetailDrawer = ref(false);
+const detailTaskId = ref<string | number | undefined>();
 
 const queryParams = reactive({
   pageNum: 1,
@@ -90,6 +93,21 @@ const columns = [
     }
   },
   {
+    title: '详情',
+    key: 'detail',
+    width: 80,
+    render(row: PrintTaskVO) {
+      return h(
+        NButton,
+        {
+          size: 'small',
+          onClick: () => openDetail(row)
+        },
+        { default: () => '详情' }
+      );
+    }
+  },
+  {
     title: '操作',
     key: 'actions',
     width: 120,
@@ -135,6 +153,11 @@ async function handleClaim(row: PrintTaskVO) {
   await claimPrintTask(row.id);
   message.success('接单成功，任务已进入我的打印任务');
   getList();
+}
+
+function openDetail(row: PrintTaskVO) {
+  detailTaskId.value = row.id;
+  showDetailDrawer.value = true;
 }
 
 function handlePageChange(page: number) {
@@ -196,5 +219,10 @@ onMounted(() => {
         }"
       />
     </NSpace>
+
+    <PrintTaskDetailDrawer
+      v-model:show="showDetailDrawer"
+      :task-id="detailTaskId"
+    />
   </NCard>
 </template>

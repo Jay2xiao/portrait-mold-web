@@ -82,6 +82,8 @@ export interface PrintTaskSpecVO {
   actualEntityWeightG?: number;
   actualSupportWeightG?: number;
   actualEntityUnitPrice?: number;
+  actualEntityWeightPhotoFileIds?: string;
+  actualSupportWeightPhotoFileIds?: string;
   actualSupportUnitPrice?: number;
   actualAmount?: number;
 
@@ -103,6 +105,8 @@ export interface PrintMaterialRecordSpecParam {
   actualEntityWeightG?: number | null;
   actualSupportWeightG?: number | null;
   actualEntityUnitPrice?: number | null;
+  actualEntityWeightPhotoFileIds?: string | null;
+  actualSupportWeightPhotoFileIds?: string | null;
   actualSupportUnitPrice?: number | null;
 
   materialRemark?: string;
@@ -234,4 +238,3 @@ export function resubmitPrintOnlyModel(orderId: string | number, data: any) {
     data
   });
 }
-
