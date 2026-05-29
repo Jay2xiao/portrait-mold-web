@@ -101,7 +101,7 @@ async function handleSubmit() {
 
   const { packageId, packageName, remark, menuCheckStrictly } = model.value;
 
-  const menuIds = menuTreeRef.value?.getCheckedMenuIds();
+  const menuIds = menuTreeRef.value?.getCheckedMenuIds() || [];
   // request
   if (props.operateType === 'add') {
     const { error } = await fetchCreateTenantPackage({ packageName, menuIds, remark, menuCheckStrictly });

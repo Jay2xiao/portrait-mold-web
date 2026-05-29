@@ -323,6 +323,7 @@ import {
   type CollabStatTodoItemVO,
   type CollabStatTrendItemVO
 } from '@/service/api/biz/collab-stat';
+import { COLLAB_ORDER_LIST_PATH, COLLAB_ORDER_SEND_PATH } from '@/service/api/biz/collab-bill-detail-link';
 
 
 
@@ -334,8 +335,8 @@ interface RiskRow {
   desc: string;
 }
 
-const RECEIVED_PATH = '/biz/collaborder';
-const SENT_PATH = '/biz/collabordersend';
+const RECEIVED_PATH = COLLAB_ORDER_LIST_PATH;
+const SENT_PATH = COLLAB_ORDER_SEND_PATH;
 
 const router = useRouter();
 const message = useMessage();

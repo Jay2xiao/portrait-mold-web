@@ -1,5 +1,6 @@
 <script setup lang="tsx">
 import { computed, defineComponent, useAttrs } from 'vue';
+import { NP } from 'naive-ui';
 import type { UploadFileInfo, UploadProps } from 'naive-ui';
 import type { JSX } from 'vue/jsx-runtime';
 import { fetchBatchDeleteOss } from '@/service/api/system/oss';

@@ -31,6 +31,7 @@ export interface CollabBillVO {
   billAmount?: number;
   paidAmount?: number;
   unpaidAmount?: number;
+  itemsJson?: string;
   billItemsJson?: string;
 
   billStatus?: CollabBillStatus | string;
@@ -80,6 +81,8 @@ export interface CollabBillQueryParams {
   collabOrderId?: CollabId;
   billStatus?: string;
   payStatus?: string;
+  sendTimeStart?: string;
+  sendTimeEnd?: string;
   keyword?: string;
   roleType?: 'SENT' | 'RECEIVED' | string;
   counterpartyTenantId?: string;

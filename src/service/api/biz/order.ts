@@ -50,6 +50,7 @@ export interface OrderVO {
   printEstimateAmount?: number;
   printDepositAmount?: number;
   printFinalAmount?: number;
+  printReceivableAmount?: number;
 
   expectedDeliveryTime?: string;
   actualDeliveryTime?: string;
@@ -202,6 +203,17 @@ export function updateOrderRepairPerformance(
 ) {
   return request<any>({
     url: `/biz/order/${id}/repair-performance`,
+    method: 'post',
+    data
+  });
+}
+
+export function updateOrderPrintRevenue(
+  id: string | number,
+  data: { printReceivableAmount: number; remark?: string }
+) {
+  return request<any>({
+    url: `/biz/order/${id}/print-revenue`,
     method: 'post',
     data
   });

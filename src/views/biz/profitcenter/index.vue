@@ -264,6 +264,15 @@ onMounted(() => {
       <NGi>
         <NCard title="总成本" :bordered="false">
           <NStatistic :value="money(dashboard.summary?.totalCostAmount)" />
+          <div class="cost-breakdown">
+            <span>材料 {{ money(dashboard.summary?.printMaterialCostAmount) }}</span>
+            <span>绩效 {{ money(dashboard.summary?.printPerformanceAmount) }}</span>
+            <span>单据其他 {{ money(dashboard.summary?.printOtherCostAmount) }}</span>
+            <span>月度固定 {{ money(dashboard.summary?.monthlyFixedCostAmount) }}</span>
+            <span>打印月度 {{ money(dashboard.summary?.printMonthlyFixedCostAmount) }}</span>
+            <span>修模团队 {{ money(dashboard.summary?.repairTeamMonthlyCostAmount) }}</span>
+            <span>公司公共 {{ money(dashboard.summary?.companyMonthlyCostAmount) }}</span>
+          </div>
           <div class="sub-text">退款：{{ money(dashboard.summary?.refundAmount) }}</div>
         </NCard>
       </NGi>
@@ -338,5 +347,15 @@ onMounted(() => {
   margin-top: 8px;
   color: #888;
   font-size: 13px;
+}
+
+.cost-breakdown {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  margin-top: 8px;
+  color: #666;
+  font-size: 12px;
+  line-height: 1.5;
 }
 </style>

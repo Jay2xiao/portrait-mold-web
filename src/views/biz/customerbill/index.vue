@@ -38,8 +38,13 @@ import {
   fetchCollabBillList,
   type CollabBillVO
 } from '@/service/api/biz/collab-bill';
+import {
+  fetchCollabOrderDetail,
+  type CollabOrderDetailVO,
+  type CollabPrintSpecVO,
+  type CollabPrintTaskSpecVO
+} from '@/service/api/biz/collab-order';
 import { buildSentCollabBillListParams } from '@/service/api/biz/collab-bill-query';
-import { buildCollabOrderDetailQuery } from '@/service/api/biz/collab-bill-detail-link';
 import { buildCollabMerchantOptions } from '@/service/api/biz/collab-partner-options';
 import { fetchCollabPartnerList } from '@/service/api/biz/collab';
 
@@ -62,13 +67,13 @@ import {
 import { refundPayment } from '@/service/api/biz/refund';
 
 import CustomerBillPrintDrawer from '@/views/biz/components/CustomerBillPrintDrawer.vue';
+import CollabOrderDetailDrawer from '@/views/biz/components/CollabOrderDetailDrawer.vue';
 
 import { watch } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
+import { useRoute } from 'vue-router';
 import { routeQueryBoolean, routeQueryString } from '@/utils/route-query';
 
 const route = useRoute();
-const router = useRouter();
 
 
 import { fetchCustomerList } from '@/service/api/biz/customer';
@@ -95,6 +100,9 @@ const collabBillTotal = ref(0);
 const showCollabBillDetailDrawer = ref(false);
 const collabBillDetailLoading = ref(false);
 const collabBillDetail = ref<CollabBillVO | null>(null);
+const collabOrderDetail = ref<CollabOrderDetailVO | null>(null);
+const showCollabOrderDetailDrawer = ref(false);
+const currentCollabOrderId = ref<string | number | null>(null);
 
 const showBalanceOffsetModal = ref(false);
 const currentAccount = ref<CustomerAccountVO | null>(null);
@@ -124,6 +132,7 @@ const queryParams = reactive({
   pageSize: 10,
   billNo: '',
   customerId: undefined as string | number | undefined,
+  billDateRange: null as [number, number] | null,
   payStatus: '',
   billStatus: '',
   unpaidOnly: false,
@@ -135,6 +144,7 @@ const collabBillQueryParams = reactive({
   pageSize: 10,
   keyword: '',
   counterpartyTenantId: undefined as string | undefined,
+  sendTimeRange: null as [number, number] | null,
   payStatus: '',
   billStatus: ''
 });
@@ -339,6 +349,36 @@ function parseCollabBillItems(row?: CollabBillVO | null) {
   } catch {
     return [];
   }
+}
+
+function collabBillItemTypeLabel(value?: string) {
+  if (value === 'REPAIR_FEE') return '修模费';
+  if (value === 'PRINT_FEE') return '打印费';
+  if (value === 'DELIVERY_FEE') return '发货费';
+  if (value === 'ADJUSTMENT') return '调整项';
+  if (value === 'DISCOUNT') return '优惠';
+  if (value === 'OTHER_FEE') return '其他费用';
+  return value || '-';
+}
+
+function collabReceiverPrintTask() {
+  return collabOrderDetail.value?.receiverPrintTask || null;
+}
+
+function collabPlannedPrintSpecs() {
+  return collabOrderDetail.value?.printSpecs || [];
+}
+
+function collabActualPrintSpecs() {
+  return collabReceiverPrintTask()?.printSpecs || [];
+}
+
+function hasCollabPrintInfo() {
+  return Boolean(
+    collabReceiverPrintTask()
+    || collabPlannedPrintSpecs().length > 0
+    || collabActualPrintSpecs().length > 0
+  );
 }
 
 const billItemDetailColumns = [
@@ -910,15 +950,143 @@ const collabBillColumns = [
             NButton,
             {
               size: 'small',
-              type: 'primary',
-              secondary: true,
-              disabled: !row.collabOrderId,
-              onClick: () => openCollabOrderDetail(row)
-            },
+	              type: 'primary',
+	              secondary: true,
+	              disabled: !row.collabOrderId,
+	              onClick: () => openCollabOrderDetailDrawer(row)
+	            },
             { default: () => '协作单详情' }
           )
         ]
       });
+    }
+  }
+];
+
+const collabPlannedPrintSpecColumns = [
+  {
+    title: '规格',
+    key: 'heightCm',
+    width: 120,
+    render(row: CollabPrintSpecVO) {
+      return `${decimalValue(row.heightCm)}cm`;
+    }
+  },
+  {
+    title: '数量',
+    key: 'quantity',
+    width: 80,
+    render(row: CollabPrintSpecVO) {
+      return row.quantity || 1;
+    }
+  },
+  {
+    title: '预估重量',
+    key: 'estimatedWeightG',
+    width: 120,
+    render(row: CollabPrintSpecVO) {
+      return `${decimalValue(row.estimatedWeightG)}g`;
+    }
+  },
+  {
+    title: '预估金额',
+    key: 'estimatedAmount',
+    width: 120,
+    render(row: CollabPrintSpecVO) {
+      return money(row.estimatedAmount as number);
+    }
+  },
+  {
+    title: '备注',
+    key: 'remark',
+    minWidth: 180,
+    render(row: CollabPrintSpecVO) {
+      return row.remark || '-';
+    }
+  }
+];
+
+const collabActualPrintSpecColumns = [
+  {
+    title: '规格',
+    key: 'heightCm',
+    width: 100,
+    render(row: CollabPrintTaskSpecVO) {
+      return `${decimalValue(row.heightCm)}cm`;
+    }
+  },
+  {
+    title: '实体克数',
+    key: 'actualEntityWeightG',
+    width: 110,
+    render(row: CollabPrintTaskSpecVO) {
+      return `${decimalValue(row.actualEntityWeightG)}g`;
+    }
+  },
+  {
+    title: '实体单价',
+    key: 'actualEntityUnitPrice',
+    width: 110,
+    render(row: CollabPrintTaskSpecVO) {
+      return decimalValue(row.actualEntityUnitPrice, 4);
+    }
+  },
+  {
+    title: '支撑克数',
+    key: 'actualSupportWeightG',
+    width: 110,
+    render(row: CollabPrintTaskSpecVO) {
+      return `${decimalValue(row.actualSupportWeightG)}g`;
+    }
+  },
+  {
+    title: '支撑单价',
+    key: 'actualSupportUnitPrice',
+    width: 110,
+    render(row: CollabPrintTaskSpecVO) {
+      return decimalValue(row.actualSupportUnitPrice, 4);
+    }
+  },
+  {
+    title: '小计',
+    key: 'actualAmount',
+    width: 110,
+    render(row: CollabPrintTaskSpecVO) {
+      return money(row.actualAmount as number);
+    }
+  },
+  {
+    title: '实体称重照片',
+    key: 'actualEntityWeightPhotoFileIds',
+    width: 160,
+    render(row: CollabPrintTaskSpecVO) {
+      return h(BizFileThumbs, {
+        fileIds: row.actualEntityWeightPhotoFileIds,
+        mode: 'image',
+        max: 3,
+        thumbSize: 48
+      });
+    }
+  },
+  {
+    title: '支撑称重照片',
+    key: 'actualSupportWeightPhotoFileIds',
+    width: 160,
+    render(row: CollabPrintTaskSpecVO) {
+      return h(BizFileThumbs, {
+        fileIds: row.actualSupportWeightPhotoFileIds,
+        mode: 'image',
+        max: 3,
+        thumbSize: 48
+      });
+    }
+  },
+  {
+    title: '备注',
+    key: 'materialRemark',
+    minWidth: 160,
+    render(row: CollabPrintTaskSpecVO) {
+      return row.materialRemark || row.remark || '-';
     }
   }
 ];
@@ -946,7 +1114,7 @@ async function loadCollabMerchants() {
 async function getList() {
   loading.value = true;
   try {
-    const res = await fetchCustomerBillList(queryParams);
+    const res = await fetchCustomerBillList(buildCustomerBillListParams());
     tableData.value = unwrapRows(res);
     total.value = unwrapTotal(res);
   } finally {
@@ -957,7 +1125,7 @@ async function getList() {
 async function getCollabBillList() {
   collabBillLoading.value = true;
   try {
-    const res = await fetchCollabBillList(buildSentCollabBillListParams(collabBillQueryParams));
+    const res = await fetchCollabBillList(buildCollabBillListParams());
     collabBillTableData.value = unwrapRows(res);
     collabBillTotal.value = unwrapTotal(res);
   } finally {
@@ -965,34 +1133,66 @@ async function getCollabBillList() {
   }
 }
 
+function buildCustomerBillListParams() {
+  const params: any = { ...queryParams };
+  const [billDateStart, billDateEnd] = queryParams.billDateRange || [];
+
+  delete params.billDateRange;
+  params.billDateStart = formatDateValue(billDateStart);
+  params.billDateEnd = formatDateValue(billDateEnd);
+
+  return params;
+}
+
+function buildCollabBillListParams() {
+  const params: any = { ...collabBillQueryParams };
+  const [sendTimeStart, sendTimeEnd] = collabBillQueryParams.sendTimeRange || [];
+
+  delete params.sendTimeRange;
+  params.sendTimeStart = formatDateValue(sendTimeStart);
+  params.sendTimeEnd = formatDateValue(sendTimeEnd);
+
+  return buildSentCollabBillListParams(params);
+}
+
 async function openCollabBillDetail(row: CollabBillVO) {
   if (!row.id) return;
   showCollabBillDetailDrawer.value = true;
   collabBillDetailLoading.value = true;
+  collabBillDetail.value = null;
+  collabOrderDetail.value = null;
   try {
     const res = await fetchCollabBillDetail(row.id);
-    collabBillDetail.value = unwrapData(res);
+    const bill = unwrapData(res);
+    collabBillDetail.value = bill;
+
+    const collabOrderId = bill?.collabOrderId || row.collabOrderId;
+    if (collabOrderId) {
+      try {
+        const detailRes = await fetchCollabOrderDetail(collabOrderId);
+        collabOrderDetail.value = unwrapData(detailRes);
+      } catch {
+        message.warning('协作账单已加载，但协作单打印明细加载失败');
+      }
+    }
   } finally {
     collabBillDetailLoading.value = false;
   }
 }
 
-function openCollabOrderDetail(row: CollabBillVO) {
-  const query = buildCollabOrderDetailQuery(row);
-  if (!query.collabOrderId) {
+function openCollabOrderDetailDrawer(row: CollabBillVO) {
+  if (!row.collabOrderId) {
     message.warning('协作账单未关联协作单');
     return;
   }
-
-  router.push({
-    path: '/biz/collaborder',
-    query
-  });
+  currentCollabOrderId.value = row.collabOrderId;
+  showCollabOrderDetailDrawer.value = true;
 }
 
 function resetQuery() {
   queryParams.billNo = '';
   queryParams.customerId = undefined;
+  queryParams.billDateRange = null;
   queryParams.payStatus = '';
   queryParams.billStatus = '';
   queryParams.pageNum = 1;
@@ -1003,6 +1203,7 @@ function resetQuery() {
 function resetCollabBillQuery() {
   collabBillQueryParams.keyword = '';
   collabBillQueryParams.counterpartyTenantId = undefined;
+  collabBillQueryParams.sendTimeRange = null;
   collabBillQueryParams.payStatus = '';
   collabBillQueryParams.billStatus = '';
   collabBillQueryParams.pageNum = 1;
@@ -1249,6 +1450,15 @@ watch(
           />
         </NFormItem>
 
+        <NFormItem label="账单日期">
+          <NDatePicker
+            v-model:value="queryParams.billDateRange"
+            type="daterange"
+            clearable
+            style="width: 240px"
+          />
+        </NFormItem>
+
         <NFormItem label="支付状态">
           <NSelect
             v-model:value="queryParams.payStatus"
@@ -1320,6 +1530,15 @@ watch(
           />
         </NFormItem>
 
+        <NFormItem label="发送日期">
+          <NDatePicker
+            v-model:value="collabBillQueryParams.sendTimeRange"
+            type="daterange"
+            clearable
+            style="width: 240px"
+          />
+        </NFormItem>
+
         <NFormItem label="支付状态">
           <NSelect
             v-model:value="collabBillQueryParams.payStatus"
@@ -1368,6 +1587,12 @@ watch(
         }"
       />
     </NSpace>
+
+    <CollabOrderDetailDrawer
+      v-model:show="showCollabOrderDetailDrawer"
+      :collab-order-id="currentCollabOrderId"
+      readonly
+    />
 
     <NDrawer v-model:show="showCollabBillDetailDrawer" width="860" placement="right">
       <NDrawerContent title="协作账单详情" closable>
@@ -1424,13 +1649,93 @@ watch(
                 size="small"
                 :columns="[
                   { title: '费用名称', key: 'itemName', width: 180 },
-                  { title: '费用类型', key: 'itemType', width: 140 },
-                  { title: '金额', key: 'amount', width: 120 },
+                  {
+                    title: '费用类型',
+                    key: 'itemType',
+                    width: 140,
+                    render: (row: any) => collabBillItemTypeLabel(row.itemType)
+                  },
+                  {
+                    title: '金额',
+                    key: 'amount',
+                    width: 120,
+                    render: (row: any) => money(row.amount)
+                  },
                   { title: '备注', key: 'remark', minWidth: 220 }
                 ]"
                 :data="parseCollabBillItems(collabBillDetail)"
                 :pagination="false"
               />
+            </NCard>
+
+            <NCard v-if="hasCollabPrintInfo()" title="协作打印信息" size="small">
+              <NSpace vertical :size="12">
+                <NDescriptions v-if="collabReceiverPrintTask()" bordered :column="3" size="small">
+                  <NDescriptionsItem label="打印任务号">
+                    {{ collabReceiverPrintTask()?.taskNo || '-' }}
+                  </NDescriptionsItem>
+                  <NDescriptionsItem label="打印状态">
+                    {{ collabReceiverPrintTask()?.status || '-' }}
+                  </NDescriptionsItem>
+                  <NDescriptionsItem label="打印费用">
+                    {{ money(collabReceiverPrintTask()?.finalAmount as number) }}
+                  </NDescriptionsItem>
+                  <NDescriptionsItem label="实体克数">
+                    {{ decimalValue(collabReceiverPrintTask()?.entityWeightG) }}g
+                  </NDescriptionsItem>
+                  <NDescriptionsItem label="支撑克数">
+                    {{ decimalValue(collabReceiverPrintTask()?.supportWeightG) }}g
+                  </NDescriptionsItem>
+                  <NDescriptionsItem label="材料录入时间">
+                    {{ collabReceiverPrintTask()?.materialRecordTime || '-' }}
+                  </NDescriptionsItem>
+                  <NDescriptionsItem label="打印完成照片" :span="3">
+                    <BizFileThumbs
+                      :file-ids="collabReceiverPrintTask()?.finishPhotoFileIds"
+                      mode="image"
+                      :max="8"
+                      :thumb-size="56"
+                    />
+                  </NDescriptionsItem>
+                  <NDescriptionsItem label="汇总实体称重照片" :span="3">
+                    <BizFileThumbs
+                      :file-ids="collabReceiverPrintTask()?.entityWeightPhotoFileIds"
+                      mode="image"
+                      :max="8"
+                      :thumb-size="56"
+                    />
+                  </NDescriptionsItem>
+                  <NDescriptionsItem label="汇总支撑称重照片" :span="3">
+                    <BizFileThumbs
+                      :file-ids="collabReceiverPrintTask()?.supportWeightPhotoFileIds"
+                      mode="image"
+                      :max="8"
+                      :thumb-size="56"
+                    />
+                  </NDescriptionsItem>
+                </NDescriptions>
+
+                <div v-if="collabPlannedPrintSpecs().length">
+                  <div class="subsection-title">发单打印规格</div>
+                  <NDataTable
+                    size="small"
+                    :columns="collabPlannedPrintSpecColumns"
+                    :data="collabPlannedPrintSpecs()"
+                    :pagination="false"
+                  />
+                </div>
+
+                <div v-if="collabActualPrintSpecs().length">
+                  <div class="subsection-title">实际材料明细</div>
+                  <NDataTable
+                    size="small"
+                    :columns="collabActualPrintSpecColumns"
+                    :data="collabActualPrintSpecs()"
+                    :scroll-x="1180"
+                    :pagination="false"
+                  />
+                </div>
+              </NSpace>
             </NCard>
           </NSpace>
         </NSpin>
@@ -1835,6 +2140,11 @@ watch(
 .section-title {
   margin-top: 12px;
   font-size: 16px;
+  font-weight: 600;
+}
+
+.subsection-title {
+  margin-bottom: 8px;
   font-weight: 600;
 }
 </style>

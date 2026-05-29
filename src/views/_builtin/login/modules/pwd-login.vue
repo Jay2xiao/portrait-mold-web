@@ -24,6 +24,7 @@ const { loading: codeLoading, startLoading: startCodeLoading, endLoading: endCod
 const codeUrl = ref<string>();
 const captchaEnabled = ref<boolean>(false);
 const remberMe = ref<boolean>(false);
+const companyCodeReg = /^\d{4,6}$/;
 
 const model: Api.Auth.PwdLoginForm = reactive({
   tenantId: '',
@@ -41,13 +42,25 @@ const rules = computed<Record<RuleKey, App.Global.FormRule[]>>(() => {
     username: [createRequiredRule($t('form.userName.required'))],
     password: [createRequiredRule($t('form.pwd.required'))],
     code: captchaEnabled.value ? [createRequiredRule($t('form.code.required'))] : [],
-    tenantId: [createRequiredRule('请输入公司编号')]
+    tenantId: [
+      createRequiredRule('请输入公司编号'),
+      {
+        trigger: ['input', 'blur'],
+        validator: (_rule: any, value: any) => companyCodeReg.test(String(value || '').trim()),
+        message: '公司编号必须是4位新编号或6位历史编号'
+      }
+    ]
   };
 
   return loginRules;
 });
 
+function allowCompanyCodeInput(value: string) {
+  return /^\d{0,6}$/.test(value);
+}
+
 async function handleSubmit() {
+  model.tenantId = String(model.tenantId || '').trim();
   await validate();
   if (remberMe.value) {
     const { tenantId, username, password } = model;
@@ -106,7 +119,9 @@ handleLoginRember();
         <NInput
           v-model:value="model.tenantId"
           placeholder="请输入公司编号"
-          maxlength="20"
+          maxlength="6"
+          inputmode="numeric"
+          :allow-input="allowCompanyCodeInput"
         />
       </NFormItem>
       <NFormItem path="username">

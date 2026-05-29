@@ -6,6 +6,13 @@ export interface ProfitSummaryVO {
   paidAmount?: number;
   unpaidAmount?: number;
   refundAmount?: number;
+  printMaterialCostAmount?: number;
+  printPerformanceAmount?: number;
+  printOtherCostAmount?: number;
+  printMonthlyFixedCostAmount?: number;
+  repairTeamMonthlyCostAmount?: number;
+  companyMonthlyCostAmount?: number;
+  monthlyFixedCostAmount?: number;
   totalCostAmount?: number;
   grossProfitAmount?: number;
   paidProfitAmount?: number;

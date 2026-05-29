@@ -240,6 +240,15 @@ export const generatedRoutes: GeneratedRoute[] = [
         }
       },
       {
+        name: 'biz_orderlog',
+        path: '/biz/orderlog',
+        component: 'view.biz_orderlog',
+        meta: {
+          title: 'biz_orderlog',
+          i18nKey: 'route.biz_orderlog'
+        }
+      },
+      {
         name: 'biz_performancesettlement',
         path: '/biz/performancesettlement',
         component: 'view.biz_performancesettlement',
@@ -264,6 +273,15 @@ export const generatedRoutes: GeneratedRoute[] = [
         meta: {
           title: 'biz_printhall',
           i18nKey: 'route.biz_printhall'
+        }
+      },
+      {
+        name: 'biz_printmonthlycost',
+        path: '/biz/printmonthlycost',
+        component: 'view.biz_printmonthlycost',
+        meta: {
+          title: 'biz_printmonthlycost',
+          i18nKey: 'route.biz_printmonthlycost'
         }
       },
       {
@@ -336,6 +354,15 @@ export const generatedRoutes: GeneratedRoute[] = [
         meta: {
           title: 'biz_repairhall',
           i18nKey: 'route.biz_repairhall'
+        }
+      },
+      {
+        name: 'biz_repairreview',
+        path: '/biz/repairreview',
+        component: 'view.biz_repairreview',
+        meta: {
+          title: 'biz_repairreview',
+          i18nKey: 'route.biz_repairreview'
         }
       },
       {
@@ -439,6 +466,26 @@ export const generatedRoutes: GeneratedRoute[] = [
     }
   },
   {
+    name: 'log',
+    path: '/log',
+    component: 'layout.base',
+    meta: {
+      title: 'log',
+      i18nKey: 'route.log'
+    },
+    children: [
+      {
+        name: 'log_financeoperationlog',
+        path: '/log/financeoperationlog',
+        component: 'view.log_financeoperationlog',
+        meta: {
+          title: 'log_financeoperationlog',
+          i18nKey: 'route.log_financeoperationlog'
+        }
+      }
+    ]
+  },
+  {
     name: 'login',
     path: '/login/:module(pwd-login|code-login|register|reset-pwd|bind-wechat)?',
     component: 'layout.blank$view.login',
@@ -493,6 +540,35 @@ export const generatedRoutes: GeneratedRoute[] = [
         meta: {
           title: 'monitor_operlog',
           i18nKey: 'route.monitor_operlog'
+        }
+      }
+    ]
+  },
+  {
+    name: 'resource',
+    path: '/resource',
+    component: 'layout.base',
+    meta: {
+      title: 'resource',
+      i18nKey: 'route.resource'
+    },
+    children: [
+      {
+        name: 'resource_tenantresourceorder',
+        path: '/resource/tenantresourceorder',
+        component: 'view.resource_tenantresourceorder',
+        meta: {
+          title: 'resource_tenantresourceorder',
+          i18nKey: 'route.resource_tenantresourceorder'
+        }
+      },
+      {
+        name: 'resource_tenantresourceusagelog',
+        path: '/resource/tenantresourceusagelog',
+        component: 'view.resource_tenantresourceusagelog',
+        meta: {
+          title: 'resource_tenantresourceusagelog',
+          i18nKey: 'route.resource_tenantresourceusagelog'
         }
       }
     ]

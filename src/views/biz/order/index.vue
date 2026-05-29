@@ -34,7 +34,8 @@ import {
   type OrderPrintSpec,
   type OrderVO,
   updateOrder, fetchOrderStageRoutes,
-  updateOrderRepairPerformance
+  updateOrderRepairPerformance,
+  updateOrderPrintRevenue
 } from '@/service/api/biz/order';
 
 import {
@@ -305,6 +306,13 @@ const repairPerformanceForm = reactive({
   remark: ''
 });
 
+const showPrintRevenueModal = ref(false);
+const printRevenueOrder = ref<OrderVO | null>(null);
+const printRevenueForm = reactive({
+  printReceivableAmount: 0,
+  remark: ''
+});
+
 async function openAssignRepairer(row: OrderVO) {
   assignRepairerOrder.value = row;
   assignRepairerForm.repairerUserId = undefined;
@@ -346,6 +354,24 @@ async function submitRepairPerformance() {
   });
   message.success('修模师业绩已更新');
   showRepairPerformanceModal.value = false;
+  getList();
+}
+
+function openPrintRevenue(row: OrderVO) {
+  printRevenueOrder.value = row;
+  printRevenueForm.printReceivableAmount = toNumber(row.printReceivableAmount ?? row.printFinalAmount ?? row.printEstimateAmount);
+  printRevenueForm.remark = '';
+  showPrintRevenueModal.value = true;
+}
+
+async function submitPrintRevenue() {
+  if (!printRevenueOrder.value?.id) return;
+  await updateOrderPrintRevenue(printRevenueOrder.value.id, {
+    printReceivableAmount: printRevenueForm.printReceivableAmount || 0,
+    remark: printRevenueForm.remark
+  });
+  message.success('打印收费已更新');
+  showPrintRevenueModal.value = false;
   getList();
 }
 const showResubmitPrintModelModal = ref(false);
@@ -767,6 +793,13 @@ function buildMoreActionOptions(row: OrderVO) {
     });
   }
 
+  if (row.orderType === 'PRINT_ONLY' || row.orderType === 'REPAIR_PRINT' || row.printFinalAmount !== undefined) {
+    options.push({
+      label: '修改打印收费',
+      key: 'printRevenue'
+    });
+  }
+
   options.push({
     label: '日志',
     key: 'timeline'
@@ -803,6 +836,11 @@ function handleMoreOrderAction(key: string, row: OrderVO) {
 
   if (key === 'repairPerformance') {
     openRepairPerformance(row);
+    return;
+  }
+
+  if (key === 'printRevenue') {
+    openPrintRevenue(row);
     return;
   }
 
@@ -1046,6 +1084,11 @@ const columns = [
   {
     title: '打印预估',
     key: 'printEstimateAmount',
+    width: 110
+  },
+  {
+    title: '打印收费',
+    key: 'printReceivableAmount',
     width: 110
   },
   {
@@ -2104,7 +2147,7 @@ watch(
             <NForm label-placement="left" label-width="130">
               <NGrid :cols="2" :x-gap="16" :y-gap="4">
                 <NGridItem>
-                  <NFormItem label="修模销售金额">
+                  <NFormItem label="销售金额">
                     <NInputNumber
                       v-model:value="form.saleAmountTotal"
                       :min="0"
@@ -2114,7 +2157,7 @@ watch(
 
                   </NFormItem>
                   <NAlert type="info">
-                    修模销售金额是公司向客户收取的修模费用，会生成修模费应收项目；内部修模成本、修模师业绩不作为客户应收金额。
+                    销售金额是公司向客户收取的订单总金额，包含对外收取的修模费用和打印费用；内部修模成本、修模师业绩不作为客户应收金额。
                   </NAlert>
                 </NGridItem>
 
@@ -2777,6 +2820,38 @@ watch(
         <NSpace justify="end">
           <NButton @click="showRepairPerformanceModal = false">取消</NButton>
           <NButton type="primary" @click="submitRepairPerformance">确认修改</NButton>
+        </NSpace>
+      </template>
+    </NModal>
+
+    <NModal v-model:show="showPrintRevenueModal" preset="card" title="修改打印收费" style="width: 520px">
+      <NForm label-placement="left" label-width="120">
+        <NFormItem label="订单号">
+          <NInput :value="printRevenueOrder?.orderNo || '-'" disabled />
+        </NFormItem>
+
+        <NFormItem label="打印收费" required>
+          <NInputNumber
+            v-model:value="printRevenueForm.printReceivableAmount"
+            :min="0"
+            :precision="2"
+            style="width: 220px"
+          />
+        </NFormItem>
+
+        <NFormItem label="备注">
+          <NInput
+            v-model:value="printRevenueForm.remark"
+            type="textarea"
+            placeholder="请输入调整原因"
+          />
+        </NFormItem>
+      </NForm>
+
+      <template #footer>
+        <NSpace justify="end">
+          <NButton @click="showPrintRevenueModal = false">取消</NButton>
+          <NButton type="primary" @click="submitPrintRevenue">确认修改</NButton>
         </NSpace>
       </template>
     </NModal>

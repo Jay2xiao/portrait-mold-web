@@ -38,6 +38,7 @@ import CollabBillingPanel from '@/views/biz/components/CollabBillingPanel.vue';
 
 import {
   acceptCollabOrder,
+  completeCollabOrder,
   deliveryCollabOrder,
   fetchCollabOrderDetail,
   fetchCollabOrderEvents,
@@ -51,6 +52,7 @@ import {
   syncCollabDeliveryInfo,
   syncCollabPrintStatus
 } from '@/service/api/biz/collab-order';
+import { COLLAB_ORDER_SEND_PATH } from '@/service/api/biz/collab-bill-detail-link';
 
 import {
   cancelCollabBill,
@@ -229,6 +231,10 @@ const deliveryInfoForm = reactive({
   remark: ''
 });
 
+const completeForm = reactive({
+  remark: ''
+});
+
 const deliveryTypeOptions = [
   { label: '快递发货', value: 'EXPRESS' },
   { label: '同城配送', value: 'LOCAL_DELIVERY' }
@@ -267,6 +273,7 @@ const submittingDelivery = ref(false);
 const submittingBill = ref(false);
 const submittingVoucher = ref(false);
 const submittingReview = ref(false);
+const submittingComplete = ref(false);
 
 const statusOptions = [
   { label: '待接单', value: 'PENDING_ACCEPT' },
@@ -518,6 +525,19 @@ const canUploadVoucher = computed(() => {
   if (currentBill.value.billStatus !== 'SENT') return false;
   if (currentBill.value.payStatus !== 'UNPAID') return false;
   return orderStatus.value === 'BILLED' || paymentStatus.value === 'VOUCHER_REJECTED';
+});
+
+const canCompleteCollab = computed(() => {
+  const order = currentOrder.value;
+
+  return (
+    isSentRole.value &&
+    order.status === 'PAID_CONFIRMED' &&
+    order.paymentStatus === 'PAID_CONFIRMED' &&
+    order.internalBillSyncStatus === 'SYNCED' &&
+    order.internalPaymentSyncStatus === 'SYNCED' &&
+    order.collabCostSyncStatus === 'SYNCED'
+  );
 });
 
 const canResyncBill = computed(() => {
@@ -1162,6 +1182,7 @@ function resetActionForms() {
   deliveryInfoForm.receiverPhone = '';
   deliveryInfoForm.receiverAddress = '';
   deliveryInfoForm.remark = '';
+  completeForm.remark = '';
 
   billCreateForm.billAmount = null;
   billCreateForm.billTitle = '';
@@ -1445,6 +1466,32 @@ async function submitDeliveryInfo() {
         await reloadDetail();
       } finally {
         submittingDeliveryInfo.value = false;
+      }
+    }
+  });
+}
+
+async function submitCompleteCollab() {
+  if (!currentOrderId.value) return;
+
+  dialog.warning({
+    title: '归档完成协作单',
+    content: '确认归档完成后，协作单将进入已完成状态，不会再次触发账单、收款或成本同步。',
+    positiveText: '确认归档',
+    negativeText: '取消',
+    onPositiveClick: async () => {
+      submittingComplete.value = true;
+
+      try {
+        await completeCollabOrder(currentOrderId.value!, {
+          remark: completeForm.remark
+        });
+
+        message.success('协作单已归档完成');
+        completeForm.remark = '';
+        await reloadDetail();
+      } finally {
+        submittingComplete.value = false;
       }
     }
   });
@@ -1770,7 +1817,7 @@ function confirmResyncPayment(row: CollabPaymentVoucherVO) {
 }
 
 function goToSend() {
-  router.push('/biz/collabordersend');
+  router.push(COLLAB_ORDER_SEND_PATH);
 }
 
 function renderAccountingSync(row: CollabOrderRow) {
@@ -2672,8 +2719,19 @@ function timelineType(value?: string) {
                   </NForm>
                 </NCard>
 
+                <NCard v-if="canCompleteCollab" title="归档完成" embedded size="small">
+                  <NForm label-placement="left" label-width="120px">
+                    <NFormItem label="归档备注">
+                      <NInput v-model:value="completeForm.remark" type="textarea" placeholder="可填写归档说明" />
+                    </NFormItem>
+                    <NFormItem>
+                      <NButton type="primary" :loading="submittingComplete" @click="submitCompleteCollab">归档完成</NButton>
+                    </NFormItem>
+                  </NForm>
+                </NCard>
+
                 <NAlert
-                  v-if="!canAcceptOrReject && !canSubmitHd && !canReviewHd && !canSubmitEffect && !canReviewEffect && !canSyncPrint && !canSyncDeliveryInfo && !canDelivery"
+                  v-if="!canAcceptOrReject && !canSubmitHd && !canReviewHd && !canSubmitEffect && !canReviewEffect && !canSyncPrint && !canSyncDeliveryInfo && !canDelivery && !canCompleteCollab"
                   type="info"
                   show-icon
                 >

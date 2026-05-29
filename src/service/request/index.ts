@@ -8,6 +8,13 @@ import { decrypt, encrypt } from '@/utils/jsencrypt';
 import { getAuthorization, handleExpiredRequest, showErrorMsg } from './shared';
 import type { RequestInstanceState } from './type';
 
+type BackendResponseData = App.Service.Response<any> & {
+  rows?: unknown;
+  data?: any;
+  code?: string | number;
+  msg?: string;
+};
+
 const encryptHeader = import.meta.env.VITE_HEADER_FLAG || 'encrypt-key';
 const isHttpProxy = import.meta.env.DEV && import.meta.env.VITE_HTTP_PROXY === 'Y';
 const { baseURL } = getServiceBaseURL(import.meta.env, isHttpProxy);
@@ -25,16 +32,17 @@ export const request = createFlatRequest(
       refreshTokenPromise: null
     } as RequestInstanceState,
     transform(response: AxiosResponse<App.Service.Response<any>>) {
+      const responseData = response.data as BackendResponseData;
       // 二进制数据则直接返回
       if (response.request.responseType === 'blob' || response.request.responseType === 'arraybuffer') {
-        return response.data;
+        return responseData;
       }
 
-      if (response.data.rows) {
-        return response.data;
+      if (responseData.rows) {
+        return responseData;
       }
 
-      return response.data.data;
+      return responseData.data;
     },
     async onRequest(config) {
       const isToken = config.headers?.isToken === false;
@@ -72,11 +80,13 @@ export const request = createFlatRequest(
         const decryptData = decryptWithAes(data, aesKey);
         response.data = JSON.parse(decryptData);
       }
-      return String(response.data.code) === import.meta.env.VITE_SERVICE_SUCCESS_CODE;
+      const responseData = response.data as BackendResponseData;
+      return String(responseData.code) === import.meta.env.VITE_SERVICE_SUCCESS_CODE;
     },
     async onBackendFail(response, instance) {
       const authStore = useAuthStore();
-      const responseCode = String(response.data.code);
+      const responseData = response.data as BackendResponseData;
+      const responseCode = String(responseData.code);
 
       function handleLogout() {
         authStore.resetStore();
@@ -86,7 +96,7 @@ export const request = createFlatRequest(
         handleLogout();
         window.removeEventListener('beforeunload', handleLogout);
 
-        request.state.errMsgStack = request.state.errMsgStack.filter(msg => msg !== response.data.msg);
+        request.state.errMsgStack = request.state.errMsgStack.filter(msg => msg !== responseData.msg);
       }
 
       const isLogin = Boolean(localStg.get('token'));
@@ -101,7 +111,7 @@ export const request = createFlatRequest(
       // when the backend response code is in `modalLogoutCodes`, it means the user will be logged out by displaying a modal
       const modalLogoutCodes = import.meta.env.VITE_SERVICE_MODAL_LOGOUT_CODES?.split(',') || [];
       if (modalLogoutCodes.includes(responseCode) && isLogin) {
-        const isExist = request.state.errMsgStack?.includes(response.data.msg);
+        const isExist = request.state.errMsgStack?.includes(responseData.msg || '');
         if (isExist) {
           return null;
         }
@@ -110,7 +120,7 @@ export const request = createFlatRequest(
           return null;
         }
 
-        request.state.errMsgStack = [...(request.state.errMsgStack || []), response.data.msg];
+        request.state.errMsgStack = [...(request.state.errMsgStack || []), responseData.msg || ''];
 
         window.$dialog?.warning({
           title: '系统提示',
@@ -159,8 +169,9 @@ export const request = createFlatRequest(
 
       // get backend error message and code
       if (error.code === BACKEND_ERROR_CODE) {
-        message = error.response?.data?.msg || message;
-        backendErrorCode = String(error.response?.data?.code || '');
+        const backendData = error.response?.data as { msg?: string; code?: string | number } | undefined;
+        message = backendData?.msg || message;
+        backendErrorCode = String(backendData?.code || '');
       }
 
       // the error message is displayed in the modal

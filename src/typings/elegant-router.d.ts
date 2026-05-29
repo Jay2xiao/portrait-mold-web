@@ -46,9 +46,11 @@ declare module "@elegant-router/types" {
     "biz_operationlog": "/biz/operationlog";
     "biz_order": "/biz/order";
     "biz_orderadjustment": "/biz/orderadjustment";
+    "biz_orderlog": "/biz/orderlog";
     "biz_performancesettlement": "/biz/performancesettlement";
     "biz_printer": "/biz/printer";
     "biz_printhall": "/biz/printhall";
+    "biz_printmonthlycost": "/biz/printmonthlycost";
     "biz_printtask": "/biz/printtask";
     "biz_productcostrule": "/biz/productcostrule";
     "biz_producttype": "/biz/producttype";
@@ -57,6 +59,7 @@ declare module "@elegant-router/types" {
     "biz_receivableitem": "/biz/receivableitem";
     "biz_repairer": "/biz/repairer";
     "biz_repairhall": "/biz/repairhall";
+    "biz_repairreview": "/biz/repairreview";
     "biz_repairtask": "/biz/repairtask";
     "biz_repairtaskdetail": "/biz/repairtaskdetail";
     "biz_resource": "/biz/resource";
@@ -67,12 +70,17 @@ declare module "@elegant-router/types" {
     "demo_tree": "/demo/tree";
     "home": "/home";
     "iframe-page": "/iframe-page/:url";
+    "log": "/log";
+    "log_financeoperationlog": "/log/financeoperationlog";
     "login": "/login/:module(pwd-login|code-login|register|reset-pwd|bind-wechat)?";
     "monitor": "/monitor";
     "monitor_cache": "/monitor/cache";
     "monitor_logininfor": "/monitor/logininfor";
     "monitor_online": "/monitor/online";
     "monitor_operlog": "/monitor/operlog";
+    "resource": "/resource";
+    "resource_tenantresourceorder": "/resource/tenantresourceorder";
+    "resource_tenantresourceusagelog": "/resource/tenantresourceusagelog";
     "social-callback": "/social-callback";
     "system": "/system";
     "system_client": "/system/client";
@@ -134,8 +142,10 @@ declare module "@elegant-router/types" {
     | "demo"
     | "home"
     | "iframe-page"
+    | "log"
     | "login"
     | "monitor"
+    | "resource"
     | "social-callback"
     | "system"
     | "tool"
@@ -184,10 +194,12 @@ declare module "@elegant-router/types" {
     | "biz_notification"
     | "biz_operationlog"
     | "biz_order"
+    | "biz_orderlog"
     | "biz_orderadjustment"
     | "biz_performancesettlement"
     | "biz_printer"
     | "biz_printhall"
+    | "biz_printmonthlycost"
     | "biz_printtask"
     | "biz_productcostrule"
     | "biz_producttype"
@@ -196,6 +208,7 @@ declare module "@elegant-router/types" {
     | "biz_receivableitem"
     | "biz_repairer"
     | "biz_repairhall"
+    | "biz_repairreview"
     | "biz_repairtask"
     | "biz_repairtaskdetail"
     | "biz_resource"
@@ -204,10 +217,13 @@ declare module "@elegant-router/types" {
     | "demo_demo"
     | "demo_tree"
     | "home"
+    | "log_financeoperationlog"
     | "monitor_cache"
     | "monitor_logininfor"
     | "monitor_online"
     | "monitor_operlog"
+    | "resource_tenantresourceorder"
+    | "resource_tenantresourceusagelog"
     | "system_client"
     | "system_config"
     | "system_dept"

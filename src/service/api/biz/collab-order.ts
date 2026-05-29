@@ -34,6 +34,10 @@ export interface CollabDeliveryInfoSyncParams {
   remark?: string;
 }
 
+export interface CollabCompleteParams {
+  remark?: string;
+}
+
 
 export interface CollabOrderVO {
   id?: string | number;
@@ -349,6 +353,14 @@ export function syncCollabDeliveryInfo(id: string | number, data: CollabDelivery
     url: `${BASE_URL}/${id}/sync-delivery-info`,
     method: 'post',
     data
+  });
+}
+
+export function completeCollabOrder(id: string | number, data?: CollabCompleteParams) {
+  return request({
+    url: `${BASE_URL}/${id}/complete`,
+    method: 'post',
+    data: data || {}
   });
 }
 

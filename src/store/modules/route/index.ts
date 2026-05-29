@@ -10,6 +10,7 @@ import { SetupStoreId } from '@/enum';
 import { createDynamicRoutes, createStaticRoutes, getAuthVueRoutes } from '@/router/routes';
 import { ROOT_ROUTE } from '@/router/routes/builtin';
 import { getRouteName, getRoutePath } from '@/router/elegant/transform';
+import { views } from '@/router/elegant/imports';
 import { useAuthStore } from '../auth';
 import { useTabStore } from '../tab';
 import {
@@ -110,11 +111,7 @@ export const useRouteStore = defineStore(SetupStoreId.Route, () => {
     route.path = route.path.startsWith('/') ? route.path : `/${route.path}`;
     route.path = parent ? parent.path + route.path : route.path;
 
-    route.name = route
-      .component!.replace(/\/index$/, '')
-      .replace(/\//g, '_')
-      .replace(/([A-Z])/g, '-$1')
-      .toLowerCase();
+    route.name = resolveDynamicRouteName(route.component!);
     if (isLayout || isFramePage || isParentLayout) {
       const name = route.path.substring(1).replaceAll('/', '_');
       route.name = parent ? `${parent.name}_${name}` : name;
@@ -167,6 +164,22 @@ export const useRouteStore = defineStore(SetupStoreId.Route, () => {
     delete route.hidden;
 
     route.children?.forEach(child => parseRouter(child, route));
+  }
+
+  function resolveDynamicRouteName(component: string) {
+    const baseName = component.replace(/\/index$/, '').replace(/\//g, '_');
+    const kebabRouteName = baseName.replace(/([A-Z])/g, '-$1').toLowerCase();
+    const plainRouteName = baseName.toLowerCase();
+
+    if (views[kebabRouteName as keyof typeof views]) {
+      return kebabRouteName;
+    }
+
+    if (views[plainRouteName as keyof typeof views]) {
+      return plainRouteName;
+    }
+
+    return kebabRouteName;
   }
 
   const removeRouteFns: (() => void)[] = [];
