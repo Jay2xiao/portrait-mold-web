@@ -43,6 +43,7 @@ const emit = defineEmits<{
 
 
 const message = useMessage();
+const QINIU_COMPLETE_TIMEOUT = 120 * 1000;
 
 function resolveQiniuUploadHost(uploadUrl?: string): { uphost: string; upprotocol: 'http' | 'https' } {
   const fallbackUrl = 'https://upload-z2.qiniup.com';
@@ -115,7 +116,9 @@ async function uploadToQiniu(rawFile: File, options: UploadCustomRequestOptions)
     useCdnDomain: false,
     uphost: uploadHost.uphost,
     upprotocol: uploadHost.upprotocol,
-    forceDirect: true
+    retryCount: 5,
+    chunkSize: 4,
+    concurrentRequestLimit: 3
   };
 
   const observable = qiniu.upload(
@@ -139,19 +142,22 @@ async function uploadToQiniu(rawFile: File, options: UploadCustomRequestOptions)
       },
       complete: async (res: any) => {
         try {
-          const completeRes = await completeQiniuUpload({
-            originalName: rawFile.name,
-            sizeBytes: rawFile.size,
-            contentType: rawFile.type,
-            objectKey: tokenData.objectKey,
-            hash: res.hash,
-            bizType: props.bizType || 'TEMP',
-            bizId: props.bizId,
-            orderId: props.orderId,
-            taskId: props.taskId,
-            fileStage: props.fileStage,
-            fileType: props.fileType
-          });
+          const completeRes = await completeQiniuUpload(
+            {
+              originalName: rawFile.name,
+              sizeBytes: rawFile.size,
+              contentType: rawFile.type,
+              objectKey: tokenData.objectKey,
+              hash: res.hash,
+              bizType: props.bizType || 'TEMP',
+              bizId: props.bizId,
+              orderId: props.orderId,
+              taskId: props.taskId,
+              fileStage: props.fileStage,
+              fileType: props.fileType
+            },
+            { timeout: QINIU_COMPLETE_TIMEOUT }
+          );
 
           const data = completeRes.data || completeRes;
           const fileId = data.id || data.fileId;

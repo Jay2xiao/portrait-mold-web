@@ -89,11 +89,12 @@ export function fetchQiniuUploadToken(data: any) {
   });
 }
 
-export function completeQiniuUpload(data: any) {
+export function completeQiniuUpload(data: any, config: Record<string, any> = {}) {
   return request<any>({
     url: '/biz/file/qiniu/complete',
     method: 'post',
-    data
+    data,
+    ...config
   });
 }
 

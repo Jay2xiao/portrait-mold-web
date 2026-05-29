@@ -21,3 +21,15 @@ assert.equal(
   true,
   'BizFileUpload should preserve the upload protocol when converting backend uploadUrl to qiniu-js config'
 );
+
+assert.equal(
+  source.includes('forceDirect: true'),
+  false,
+  'BizFileUpload should not force direct upload because qiniu-js needs resumable upload for files larger than 4MB'
+);
+
+assert.equal(
+  source.includes('timeout: QINIU_COMPLETE_TIMEOUT'),
+  true,
+  'BizFileUpload should use a longer timeout for the backend Qiniu complete callback'
+);
