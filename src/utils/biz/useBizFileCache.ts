@@ -4,7 +4,7 @@ import {
   thumbnailFileBlob,
   type FileAssetVO
 } from '@/service/api/biz/file';
-import { getBlobFromResponse, isImageFile } from '@/utils/biz/blob';
+import { getBlobFromResponse } from '@/utils/biz/blob';
 
 const fileMetaCache = new Map<string, FileAssetVO>();
 const thumbUrlCache = new Map<string, string>();

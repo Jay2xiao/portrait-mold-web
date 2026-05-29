@@ -46,3 +46,15 @@ assert.equal(
   false,
   'order price tab should not label saleAmountTotal as repair-only revenue'
 );
+
+assert.equal(
+  apiSource.includes('totalCostAmount?: number') && apiSource.includes('grossProfitAmount?: number'),
+  true,
+  'order API type should include profit snapshot display fields'
+);
+
+assert.equal(
+  pageSource.includes("key: 'totalCostAmount'") && pageSource.includes("key: 'grossProfitAmount'"),
+  true,
+  'order list should render total cost and gross profit from backend snapshot amounts'
+);

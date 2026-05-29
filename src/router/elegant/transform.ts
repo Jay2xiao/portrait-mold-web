@@ -244,7 +244,9 @@ const routeMap: RouteMap = {
   "system_user": "/system/user",
   "tool": "/tool",
   "tool_gen": "/tool/gen",
-  "user-center": "/user-center"
+  "user-center": "/user-center",
+  "wx": "/wx",
+  "wx_templatemessagelog": "/wx/templatemessagelog"
 };
 
 /**

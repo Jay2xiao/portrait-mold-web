@@ -578,7 +578,7 @@ function printPdf() {
     }, 500);
   };
 
-  win.onafterprint = cleanup;
+  win.addEventListener('afterprint', cleanup, { once: true });
 
   doc.open();
   doc.write(html);

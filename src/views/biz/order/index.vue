@@ -668,6 +668,17 @@ function toNumber(value: any, defaultValue = 0) {
   return Number.isNaN(num) ? defaultValue : num;
 }
 
+function money(value: any) {
+  return toNumber(value).toFixed(2);
+}
+
+function profitTagType(value: any) {
+  const amount = toNumber(value);
+  if (amount < 0) return 'error';
+  if (amount > 0) return 'success';
+  return 'default';
+}
+
 function getRouteSummaryMode(row: any) {
   return row?.routeSummaryMode || '';
 }
@@ -1090,6 +1101,26 @@ const columns = [
     title: '打印收费',
     key: 'printReceivableAmount',
     width: 110
+  },
+  {
+    title: '总成本',
+    key: 'totalCostAmount',
+    width: 110,
+    render(row: OrderVO) {
+      return money(row.totalCostAmount);
+    }
+  },
+  {
+    title: '毛利',
+    key: 'grossProfitAmount',
+    width: 110,
+    render(row: OrderVO) {
+      return h(
+        NTag,
+        { type: profitTagType(row.grossProfitAmount), bordered: false },
+        { default: () => money(row.grossProfitAmount) }
+      );
+    }
   },
   {
     title: '预计交付',

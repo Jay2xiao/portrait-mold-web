@@ -36,6 +36,7 @@ import {
 import {
   fetchCollabBillDetail,
   fetchCollabBillList,
+  type CollabBillBatchOrderVO,
   type CollabBillVO
 } from '@/service/api/biz/collab-bill';
 import {
@@ -363,6 +364,33 @@ function collabBillItemTypeLabel(value?: string) {
 
 function collabReceiverPrintTask() {
   return collabOrderDetail.value?.receiverPrintTask || null;
+}
+
+function billModeLabel(value?: string) {
+  if (value === 'BATCH') return '批量账单';
+  if (value === 'SINGLE') return '单笔账单';
+  return value || '-';
+}
+
+function collabServiceTypeLabel(value?: string) {
+  if (value === 'REPAIR_ONLY') return '只修模';
+  if (value === 'PRINT_ONLY') return '只打印';
+  if (value === 'REPAIR_PRINT') return '修模 + 打印';
+  return value || '-';
+}
+
+function collabBillOrders() {
+  return collabBillDetail.value?.orders || [];
+}
+
+function openCollabOrderDetailFromBillOrder(row: CollabBillBatchOrderVO) {
+  if (!row.collabOrderId) {
+    message.warning('协作账单明细未关联协作单');
+    return;
+  }
+
+  currentCollabOrderId.value = row.collabOrderId;
+  showCollabOrderDetailDrawer.value = true;
 }
 
 function collabPlannedPrintSpecs() {
@@ -959,6 +987,84 @@ const collabBillColumns = [
           )
         ]
       });
+    }
+  }
+];
+
+const collabBillOrderColumns = [
+  {
+    title: '协作单号',
+    key: 'collabOrderNoSnapshot',
+    width: 180,
+    fixed: 'left' as const
+  },
+  {
+    title: '源订单号',
+    key: 'sourceOrderNoSnapshot',
+    width: 150
+  },
+  {
+    title: '接单方订单',
+    key: 'receiverOrderNoSnapshot',
+    width: 150
+  },
+  {
+    title: '服务类型',
+    key: 'serviceType',
+    width: 120,
+    render(row: CollabBillBatchOrderVO) {
+      return collabServiceTypeLabel(row.serviceType);
+    }
+  },
+  {
+    title: '修模费',
+    key: 'repairFeeAmount',
+    width: 100,
+    render(row: CollabBillBatchOrderVO) {
+      return money(row.repairFeeAmount as number);
+    }
+  },
+  {
+    title: '打印费',
+    key: 'printFeeAmount',
+    width: 100,
+    render(row: CollabBillBatchOrderVO) {
+      return money(row.printFeeAmount as number);
+    }
+  },
+  {
+    title: '账单金额',
+    key: 'billAmount',
+    width: 110,
+    render(row: CollabBillBatchOrderVO) {
+      return money(row.billAmount as number);
+    }
+  },
+  {
+    title: '备注',
+    key: 'remark',
+    minWidth: 160,
+    render(row: CollabBillBatchOrderVO) {
+      return row.remark || '-';
+    }
+  },
+  {
+    title: '操作',
+    key: 'actions',
+    width: 120,
+    fixed: 'right' as const,
+    render(row: CollabBillBatchOrderVO) {
+      return h(
+        NButton,
+        {
+          size: 'small',
+          type: 'primary',
+          secondary: true,
+          disabled: !row.collabOrderId,
+          onClick: () => openCollabOrderDetailFromBillOrder(row)
+        },
+        { default: () => '协作单详情' }
+      );
     }
   }
 ];
@@ -1606,6 +1712,15 @@ watch(
                 <NDescriptionsItem label="账单标题">
                   {{ collabBillDetail.billTitle || '-' }}
                 </NDescriptionsItem>
+                <NDescriptionsItem label="账单模式">
+                  {{ billModeLabel(collabBillDetail.billMode) }}
+                </NDescriptionsItem>
+                <NDescriptionsItem label="协作单数">
+                  {{ collabBillDetail.orderCount || collabBillOrders().length || 1 }}
+                </NDescriptionsItem>
+                <NDescriptionsItem label="账期">
+                  {{ collabBillDetail.billPeriodStart || '-' }} 至 {{ collabBillDetail.billPeriodEnd || '-' }}
+                </NDescriptionsItem>
                 <NDescriptionsItem label="源订单号">
                   {{ collabBillDetail.sourceOrderNoSnapshot || '-' }}
                 </NDescriptionsItem>
@@ -1640,6 +1755,16 @@ watch(
                   {{ collabBillDetail.remark || '-' }}
                 </NDescriptionsItem>
               </NDescriptions>
+            </NCard>
+
+            <NCard v-if="collabBillOrders().length" title="账单包含协作单" size="small">
+              <NDataTable
+                size="small"
+                :columns="collabBillOrderColumns"
+                :data="collabBillOrders()"
+                :scroll-x="1280"
+                :pagination="false"
+              />
             </NCard>
 
             <NCard title="账单明细" size="small">

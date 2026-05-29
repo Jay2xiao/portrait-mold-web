@@ -295,7 +295,7 @@ async function handleSyncTenantInitConfig(row: Api.System.Tenant) {
         return false;
       }
 
-      const { error, data } = await fetchSyncTenantInitConfig(row.tenantId!, {
+      const { error, data: syncData } = await fetchSyncTenantInitConfig(row.tenantId!, {
         sourceTenantId: sourceTenantId.value.trim(),
         syncRoles: true,
         syncProductTypes: true,
@@ -304,7 +304,7 @@ async function handleSyncTenantInitConfig(row: Api.System.Tenant) {
 
       if (error) return false;
 
-      const result = data as any;
+      const result = syncData as any;
 
       window.$message?.success(
         `同步完成：新增角色 ${result?.createdRoleCount ?? 0} 个，补齐权限 ${

@@ -134,3 +134,24 @@ export function fetchUpdateUserAvatar(formData: FormData) {
     data: formData
   });
 }
+
+export function fetchCreateUserWechatBindQr(userId: CommonType.IdType) {
+  return request<Api.System.UserWechatBindQr>({
+    url: `/system/user/${userId}/wechat-bind-qrcode`,
+    method: 'post'
+  });
+}
+
+export function fetchGetUserWechatBindStatus(userId: CommonType.IdType) {
+  return request<Api.System.UserWechatBindStatus>({
+    url: `/system/user/${userId}/wechat-bind-status`,
+    method: 'get'
+  });
+}
+
+export function fetchUnbindUserWechat(userId: CommonType.IdType) {
+  return request<boolean>({
+    url: `/system/user/${userId}/wechat-bind`,
+    method: 'delete'
+  });
+}

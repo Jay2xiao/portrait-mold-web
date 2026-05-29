@@ -170,6 +170,19 @@ declare namespace Api {
     /** user list */
     type UserList = Common.PaginatingQueryRecord<User>;
 
+    type UserWechatBindQr = {
+      token: string;
+      bindUrl: string;
+      expireSeconds: number;
+    };
+
+    type UserWechatBindStatus = {
+      bound: boolean;
+      source: string;
+      openIdMasked?: string;
+      bindTime?: string;
+    };
+
     /** auth role */
     type AuthRole = {
       user: User;

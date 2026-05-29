@@ -339,17 +339,17 @@ async function handleOrderChange(orderId: string | number) {
 }
 
 function handleItemTypeChange(value: string) {
-  const item = currentReceivableItems.value.find(item => item.itemType === value);
+  const receivableItem = currentReceivableItems.value.find(currentItem => currentItem.itemType === value);
 
-  if (!item) {
+  if (!receivableItem) {
     form.currentAmount = 0;
     form.afterAmount = 0;
     message.warning('该订单下没有对应应收项目');
     return;
   }
 
-  form.currentAmount = Number(item.amount || 0);
-  form.afterAmount = Number(item.amount || 0);
+  form.currentAmount = Number(receivableItem.amount || 0);
+  form.afterAmount = Number(receivableItem.amount || 0);
 }
 
 
