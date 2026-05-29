@@ -44,6 +44,26 @@ const emit = defineEmits<{
 
 const message = useMessage();
 
+function resolveQiniuUploadHost(uploadUrl?: string): { uphost: string; upprotocol: 'http' | 'https' } {
+  const fallbackUrl = 'https://upload-z2.qiniup.com';
+  const candidate = uploadUrl || fallbackUrl;
+  const normalized = candidate.includes('://') ? candidate : `https://${candidate}`;
+
+  try {
+    const parsed = new URL(normalized);
+
+    return {
+      uphost: parsed.host,
+      upprotocol: parsed.protocol === 'http:' ? 'http' : 'https'
+    };
+  } catch {
+    return {
+      uphost: 'upload-z2.qiniup.com',
+      upprotocol: 'https'
+    };
+  }
+}
+
 async function customRequest(options: UploadCustomRequestOptions) {
   const rawFile = options.file.file as File | null;
 
@@ -90,10 +110,11 @@ async function uploadToQiniu(rawFile: File, options: UploadCustomRequestOptions)
 
   const tokenData = tokenRes.data || tokenRes;
 
+  const uploadHost = resolveQiniuUploadHost(tokenData.uploadUrl);
   const config = {
     useCdnDomain: false,
-    region: qiniu.region.z2,
-    uploadURL: tokenData.uploadUrl || 'https://upload-z2.qiniup.com',
+    uphost: uploadHost.uphost,
+    upprotocol: uploadHost.upprotocol,
     forceDirect: true
   };
 
@@ -101,7 +122,10 @@ async function uploadToQiniu(rawFile: File, options: UploadCustomRequestOptions)
     rawFile,
     tokenData.objectKey,
     tokenData.uploadToken,
-    {},
+    {
+      fname: rawFile.name,
+      mimeType: rawFile.type || undefined
+    },
     config
   );
 
