@@ -16,6 +16,11 @@ export interface CollabBillVO {
 
   collabOrderId?: CollabId;
   collabOrderNoSnapshot?: string;
+  billMode?: 'SINGLE' | 'BATCH' | string;
+  orderCount?: number;
+  billPeriodStart?: string;
+  billPeriodEnd?: string;
+  orders?: CollabBillBatchOrderVO[];
 
   senderTenantId?: string;
   senderTenantNameSnapshot?: string;
@@ -71,6 +76,38 @@ export interface CollabBillCreateParams {
   billRemark?: string;
   dueDate?: string;
   items?: CollabBillItemParams[];
+}
+
+export interface CollabBillBatchOrderVO {
+  id?: CollabId;
+  collabBillId?: CollabId;
+  collabOrderId?: CollabId;
+  collabOrderNoSnapshot?: string;
+  sourceOrderId?: CollabId;
+  sourceOrderNoSnapshot?: string;
+  receiverOrderId?: CollabId;
+  receiverOrderNoSnapshot?: string;
+  serviceType?: string;
+  repairFeeAmount?: number;
+  printFeeAmount?: number;
+  billAmount?: number;
+  itemsJson?: string;
+  remark?: string;
+}
+
+export interface CollabBillBatchCreateParams {
+  billTitle?: string;
+  billRemark?: string;
+  billPeriodStart?: string;
+  billPeriodEnd?: string;
+  orders: Array<{
+    collabOrderId: CollabId;
+    billAmount: number;
+    repairFeeAmount?: number;
+    printFeeAmount?: number;
+    remark?: string;
+    items?: CollabBillItemParams[];
+  }>;
 }
 
 export interface CollabBillCancelParams {
@@ -138,6 +175,17 @@ export function fetchCollabBillByOrder(collabOrderId: CollabId) {
 export function createCollabBill(data: CollabBillCreateParams) {
   return request<CollabId>({
     url: `${BASE_URL}/create`,
+    method: 'post',
+    data
+  });
+}
+
+/**
+ * 创建批量协作账单草稿
+ */
+export function createBatchCollabBill(data: CollabBillBatchCreateParams) {
+  return request<any>({
+    url: `${BASE_URL}/batch/create`,
     method: 'post',
     data
   });

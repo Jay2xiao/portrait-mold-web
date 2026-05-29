@@ -222,33 +222,33 @@ function normalizeOrderDetail(data: any) {
 
 
   const {
-    repairTasks,
-    printTasks,
-    deliveryRecords,
+    repairTasks: normalizedRepairTasks,
+    printTasks: normalizedPrintTasks,
+    deliveryRecords: normalizedDeliveryRecords,
     rejectRecords,
     timeline,
-    receivableItems,
+    receivableItems: normalizedReceivableItems,
     billItems,
-    bills,
+    bills: normalizedBills,
     paymentAllocations,
-    payments,
-    adjustments,
+    payments: normalizedPayments,
+    adjustments: normalizedAdjustments,
     ...orderData
   } = data;
 
   return {
     order: orderData,
-    repairTasks: repairTasks || [],
-    printTasks: printTasks || [],
-    deliveryRecords: deliveryRecords || [],
+    repairTasks: normalizedRepairTasks || [],
+    printTasks: normalizedPrintTasks || [],
+    deliveryRecords: normalizedDeliveryRecords || [],
     rejectRecords: rejectRecords || [],
     timeline: timeline || [],
-    receivableItems: receivableItems || [],
+    receivableItems: normalizedReceivableItems || [],
     billItems: billItems || [],
-    bills: bills || [],
+    bills: normalizedBills || [],
     paymentAllocations: paymentAllocations || [],
-    payments: payments || [],
-    adjustments: adjustments || []
+    payments: normalizedPayments || [],
+    adjustments: normalizedAdjustments || []
   };
 
 }
@@ -751,6 +751,14 @@ watch(
 
               <NDescriptionsItem label="未收金额">
                 {{ money(order.unpaidAmount) }}
+              </NDescriptionsItem>
+
+              <NDescriptionsItem label="总成本">
+                {{ money(order.totalCostAmount) }}
+              </NDescriptionsItem>
+
+              <NDescriptionsItem label="毛利">
+                {{ money(order.grossProfitAmount) }}
               </NDescriptionsItem>
 
               <NDescriptionsItem label="高清处理费">

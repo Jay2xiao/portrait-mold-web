@@ -99,6 +99,8 @@ declare module "@elegant-router/types" {
     "tool": "/tool";
     "tool_gen": "/tool/gen";
     "user-center": "/user-center";
+    "wx": "/wx";
+    "wx_templatemessagelog": "/wx/templatemessagelog";
   };
 
   /**
@@ -150,6 +152,7 @@ declare module "@elegant-router/types" {
     | "system"
     | "tool"
     | "user-center"
+    | "wx"
   >;
 
   /**
@@ -238,6 +241,7 @@ declare module "@elegant-router/types" {
     | "system_tenant"
     | "system_user"
     | "tool_gen"
+    | "wx_templatemessagelog"
   >;
 
   /**

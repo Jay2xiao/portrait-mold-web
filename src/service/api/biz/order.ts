@@ -52,6 +52,12 @@ export interface OrderVO {
   printFinalAmount?: number;
   printReceivableAmount?: number;
 
+  receivableAmount?: number;
+  paidAmount?: number;
+  unpaidAmount?: number;
+  totalCostAmount?: number;
+  grossProfitAmount?: number;
+
   expectedDeliveryTime?: string;
   actualDeliveryTime?: string;
 

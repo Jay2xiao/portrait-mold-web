@@ -753,5 +753,25 @@ export const generatedRoutes: GeneratedRoute[] = [
       icon: 'material-symbols:account-circle-full',
       hideInMenu: true
     }
+  },
+  {
+    name: 'wx',
+    path: '/wx',
+    component: 'layout.base',
+    meta: {
+      title: 'wx',
+      i18nKey: 'route.wx'
+    },
+    children: [
+      {
+        name: 'wx_templatemessagelog',
+        path: '/wx/templatemessagelog',
+        component: 'view.wx_templatemessagelog',
+        meta: {
+          title: 'wx_templatemessagelog',
+          i18nKey: 'route.wx_templatemessagelog'
+        }
+      }
+    ]
   }
 ];

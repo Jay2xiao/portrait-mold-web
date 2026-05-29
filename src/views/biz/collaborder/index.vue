@@ -56,12 +56,14 @@ import { COLLAB_ORDER_SEND_PATH } from '@/service/api/biz/collab-bill-detail-lin
 
 import {
   cancelCollabBill,
+  createBatchCollabBill,
   createCollabBill,
   fetchCollabBillByOrder,
   resyncCollabInternalBill,
   sendCollabBill,
   type CollabBillVO
 } from '@/service/api/biz/collab-bill';
+import { resolveCollabBillId } from '@/service/api/biz/collab-bill-utils';
 
 import {
   approveCollabPaymentVoucher,
@@ -139,6 +141,7 @@ const loadingEvents = ref(false);
 
 const sentRows = ref<CollabOrderRow[]>([]);
 const receivedRows = ref<CollabOrderRow[]>([]);
+const checkedReceivedRowKeys = ref<CollabId[]>([]);
 
 const showDetailDrawer = ref(false);
 const detail = ref<any>(null);
@@ -152,6 +155,7 @@ const rejectTarget = ref<CollabOrderRow | null>(null);
 const showHdReviewModal = ref(false);
 const showEffectReviewModal = ref(false);
 const showBillCreateModal = ref(false);
+const showBatchBillCreateModal = ref(false);
 const showBillCancelModal = ref(false);
 const showVoucherUploadModal = ref(false);
 const showVoucherReviewModal = ref(false);
@@ -248,6 +252,11 @@ const billCreateForm = reactive({
   itemType: 'COLLAB_SERVICE_FEE'
 });
 
+const batchBillCreateForm = reactive({
+  billTitle: '',
+  billRemark: ''
+});
+
 const billCancelForm = reactive({
   reason: ''
 });
@@ -271,6 +280,7 @@ const submittingPrint = ref(false);
 const submittingDeliveryInfo = ref(false);
 const submittingDelivery = ref(false);
 const submittingBill = ref(false);
+const submittingBatchBill = ref(false);
 const submittingVoucher = ref(false);
 const submittingReview = ref(false);
 const submittingComplete = ref(false);
@@ -348,6 +358,10 @@ const receiverPrintSpecs = computed(() => {
   return detail.value?.printSpecs || [];
 });
 const currentBill = computed<CollabBillVO | null>(() => detail.value?.bill || null);
+const selectedReceivedBillRows = computed(() => {
+  const ids = new Set(checkedReceivedRowKeys.value.map(item => String(item)));
+  return receivedRows.value.filter(row => row.id && ids.has(String(row.id)));
+});
 const paymentVouchers = computed<CollabPaymentVoucherVO[]>(() =>
   Array.isArray(detail.value?.paymentVouchers) ? detail.value.paymentVouchers : []
 );
@@ -529,6 +543,7 @@ const canUploadVoucher = computed(() => {
 
 const canCompleteCollab = computed(() => {
   const order = currentOrder.value;
+  if (!order) return false;
 
   return (
     isSentRole.value &&
@@ -742,6 +757,16 @@ const baseColumns: DataTableColumns<CollabOrderRow> = [
     }
   }
 ];
+
+const receivedColumns = computed<DataTableColumns<CollabOrderRow>>(() => [
+  {
+    type: 'selection',
+    disabled(row: CollabOrderRow) {
+      return !canBatchBillRow(row);
+    }
+  },
+  ...baseColumns
+]);
 
 const fileColumns: DataTableColumns<CollabFileRow> = [
   {
@@ -1543,6 +1568,82 @@ async function submitCreateBill() {
   }
 }
 
+function canBatchBillRow(row: CollabOrderRow) {
+  return activeTab.value === 'RECEIVED' && row.status === 'WAIT_BILL';
+}
+
+function openBatchCreateBillModal() {
+  const rows = selectedReceivedBillRows.value;
+  if (rows.length < 2) {
+    message.warning('请至少选择2条待出账协作单');
+    return;
+  }
+
+  const invalid = rows.find(row => !canBatchBillRow(row));
+  if (invalid) {
+    message.warning('只能批量选择待出账的收到协作单');
+    return;
+  }
+
+  const senderIds = new Set(rows.map(row => String(row.senderTenantId || '')));
+  if (senderIds.size !== 1) {
+    message.warning('批量协作账单只能合并同一发单方的协作单');
+    return;
+  }
+
+  batchBillCreateForm.billTitle = `${rows[0].senderTenantNameSnapshot || '协作商家'} 批量协作账单`;
+  batchBillCreateForm.billRemark = '';
+  showBatchBillCreateModal.value = true;
+}
+
+async function submitBatchCreateBill() {
+  const rows = selectedReceivedBillRows.value;
+  if (rows.length < 2) {
+    message.warning('请至少选择2条待出账协作单');
+    return;
+  }
+
+  submittingBatchBill.value = true;
+
+  try {
+    const billId = await createBatchCollabBill({
+      billTitle: batchBillCreateForm.billTitle || undefined,
+      billRemark: batchBillCreateForm.billRemark || undefined,
+      orders: rows.map(row => {
+        const repairFeeAmount = Number(row.senderRepairFeeAmount || 0);
+        const printFeeAmount = Number(row.receiverPrintTask?.finalAmount || row.printFeeAmount || 0);
+        const billAmount = Number(row.collabAmount || repairFeeAmount + printFeeAmount);
+        return {
+          collabOrderId: row.id!,
+          billAmount: Number(billAmount.toFixed(2)),
+          repairFeeAmount: Number(repairFeeAmount.toFixed(2)),
+          printFeeAmount: Number(printFeeAmount.toFixed(2)),
+          items: [
+            {
+              itemName: '协作服务费',
+              itemType: 'COLLAB_SERVICE_FEE',
+              amount: Number(billAmount.toFixed(2)),
+              remark: row.collabOrderNo
+            }
+          ]
+        };
+      })
+    });
+
+    const id = resolveCollabBillId(billId);
+    if (!id) {
+      throw new Error('批量协作账单创建失败，未返回账单ID');
+    }
+    await sendCollabBill(id);
+    message.success('批量协作账单已创建并发送');
+    showBatchBillCreateModal.value = false;
+    checkedReceivedRowKeys.value = [];
+    await loadReceived();
+  } finally {
+    submittingBatchBill.value = false;
+  }
+}
+
 function confirmSendBill() {
   if (!currentBill.value?.id) return;
 
@@ -2274,12 +2375,24 @@ function timelineType(value?: string) {
     <NCard :bordered="false">
       <NTabs :value="activeTab" type="line" animated @update:value="handleTabChange">
         <NTabPane name="RECEIVED" tab="收到的协作单">
+          <NSpace justify="end" class="table-toolbar">
+            <NButton
+              type="primary"
+              :disabled="selectedReceivedBillRows.length < 2"
+              @click="openBatchCreateBillModal"
+            >
+              批量生成协作账单
+            </NButton>
+          </NSpace>
           <NDataTable
             remote
             size="small"
             :loading="loadingReceived"
-            :columns="baseColumns"
+            :columns="receivedColumns"
             :data="receivedRows"
+            :checked-row-keys="checkedReceivedRowKeys"
+            :row-checkable="canBatchBillRow"
+            @update:checked-row-keys="checkedReceivedRowKeys = $event"
             :pagination="receivedPagination"
             :scroll-x="1900"
             :row-key="row => row.id"
@@ -2864,6 +2977,44 @@ function timelineType(value?: string) {
           </NButton>
           <NButton :type="effectReviewForm.result === 'APPROVE' ? 'success' : 'error'" :loading="submittingReview" @click="submitEffectReviewResult">
             {{ effectReviewForm.result === 'APPROVE' ? '审核通过' : '确认驳回' }}
+          </NButton>
+        </NSpace>
+      </template>
+    </NModal>
+
+    <NModal v-model:show="showBatchBillCreateModal" preset="card" title="批量生成协作账单" :style="{ width: '720px' }">
+      <NSpace vertical :size="12">
+        <NAlert type="info">
+          已选择 {{ selectedReceivedBillRows.length }} 条待出账协作单。批量账单只能合并同一发单方，提交后会自动发送给发单方付款。
+        </NAlert>
+        <NForm label-placement="left" label-width="100px">
+          <NFormItem label="账单标题">
+            <NInput v-model:value="batchBillCreateForm.billTitle" placeholder="请输入账单标题" />
+          </NFormItem>
+          <NFormItem label="备注">
+            <NInput v-model:value="batchBillCreateForm.billRemark" type="textarea" />
+          </NFormItem>
+        </NForm>
+        <NDataTable
+          size="small"
+          :columns="[
+            { title: '协作单号', key: 'collabOrderNo', width: 160 },
+            { title: '源订单号', key: 'sourceOrderNoSnapshot', width: 160 },
+            { title: '服务类型', key: 'serviceType', width: 120, render: (row: any) => serviceTypeText(row.serviceType) },
+            { title: '修模费', key: 'senderRepairFeeAmount', width: 100, render: (row: any) => money(row.senderRepairFeeAmount) },
+            { title: '打印费', key: 'printFeeAmount', width: 100, render: (row: any) => money(row.receiverPrintTask?.finalAmount || row.printFeeAmount) },
+            { title: '账单金额', key: 'collabAmount', width: 110, render: (row: any) => money(row.collabAmount || Number(row.senderRepairFeeAmount || 0) + Number(row.receiverPrintTask?.finalAmount || row.printFeeAmount || 0)) }
+          ]"
+          :data="selectedReceivedBillRows"
+          :pagination="false"
+        />
+      </NSpace>
+
+      <template #footer>
+        <NSpace justify="end">
+          <NButton @click="showBatchBillCreateModal = false">取消</NButton>
+          <NButton type="primary" :loading="submittingBatchBill" @click="submitBatchCreateBill">
+            创建并发送
           </NButton>
         </NSpace>
       </template>

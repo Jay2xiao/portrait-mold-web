@@ -17,6 +17,7 @@ import UserOperateDrawer from './modules/user-operate-drawer.vue';
 import UserImportModal from './modules/user-import-modal.vue';
 import UserPasswordDrawer from './modules/user-password-drawer.vue';
 import UserSearch from './modules/user-search.vue';
+import UserWechatBindModal from './modules/user-wechat-bind-modal.vue';
 
 defineOptions({
   name: 'UserList'
@@ -31,6 +32,7 @@ const { download } = useDownload();
 
 const { bool: importVisible, setTrue: openImportModal } = useBoolean();
 const { bool: passwordVisible, setTrue: openPasswordDrawer } = useBoolean();
+const { bool: wechatVisible, setTrue: openWechatModal } = useBoolean();
 
 const searchParams = ref<Api.System.UserSearchParams>({
   pageNum: 1,
@@ -134,7 +136,7 @@ const { columns, columnChecks, data, getData, getDataByPage, loading, mobilePagi
         key: 'operate',
         title: $t('common.operate'),
         align: 'center',
-        width: 150,
+        width: 190,
         render: row => {
           if (row.userId === 1) return null;
 
@@ -175,8 +177,21 @@ const { columns, columnChecks, data, getData, getDataByPage, loading, mobilePagi
             );
           };
 
+          const wechatBtn = () => {
+            return (
+              <ButtonIcon
+                text
+                type="primary"
+                icon="ri:wechat-line"
+                tooltipContent="绑定微信"
+                onClick={() => handleWechatBind(row)}
+              />
+            );
+          };
+
           const buttons = [];
           if (hasAuth('system:user:edit')) buttons.push(editBtn());
+          if (hasAuth('system:user:edit')) buttons.push(wechatBtn());
           if (hasAuth('system:user:resetPwd')) buttons.push(passwordBtn());
           if (hasAuth('system:user:remove')) buttons.push(deleteBtn());
 
@@ -220,6 +235,11 @@ async function handleResetPwd(userId: CommonType.IdType) {
   const findItem = data.value.find(item => item.userId === userId) || null;
   editingData.value = jsonClone(findItem);
   openPasswordDrawer();
+}
+
+async function handleWechatBind(row: Api.System.User) {
+  editingData.value = jsonClone(row);
+  openWechatModal();
 }
 
 const { loading: treeLoading, startLoading: startTreeLoading, endLoading: endTreeLoading } = useLoading();
@@ -371,6 +391,7 @@ function handleResetSearch() {
           @submitted="getDataByPage"
         />
         <UserPasswordDrawer v-model:visible="passwordVisible" :row-data="editingData" />
+        <UserWechatBindModal v-model:visible="wechatVisible" :row-data="editingData" />
       </NCard>
     </div>
   </TableSiderLayout>
