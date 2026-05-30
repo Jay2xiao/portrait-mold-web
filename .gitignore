@@ -36,3 +36,6 @@ yarn.lock
 
 # VibeCoding state
 .ai_state/
+
+# Local Playwright CLI traces
+.playwright-cli/

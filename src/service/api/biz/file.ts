@@ -1,5 +1,7 @@
 import { request } from '@/service/request';
 
+export const QINIU_COMPLETE_REQUEST_TIMEOUT = 600 * 1000;
+
 export interface FileAssetVO {
   id?: string | number;
   originalName?: string;
@@ -94,6 +96,7 @@ export function completeQiniuUpload(data: any, config: Record<string, any> = {})
     url: '/biz/file/qiniu/complete',
     method: 'post',
     data,
+    timeout: QINIU_COMPLETE_REQUEST_TIMEOUT,
     ...config
   });
 }
