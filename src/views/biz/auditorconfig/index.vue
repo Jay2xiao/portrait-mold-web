@@ -49,6 +49,18 @@ const modalTitle = ref('新增审核员配置');
 
 const auditorOptions = ref<any[]>([]);
 
+const form = reactive<AuditorConfigForm>({
+  id: undefined,
+  nodeCode: '',
+  nodeName: '',
+  auditorType: 'ROLE',
+  auditorValue: '',
+  status: 'ENABLE',
+  isDefault: '0',
+  sortNum: 0,
+  remark: ''
+});
+
 function auditorValuePlaceholder() {
   if (form.auditorType === 'ROLE') return '请选择角色';
   if (form.auditorType === 'USER') return '请选择用户';
@@ -79,19 +91,6 @@ async function handleAuditorTypeChange(value: string) {
   await loadAuditorOptions(value);
 }
 
-
-const form = reactive<AuditorConfigForm>({
-  id: undefined,
-  nodeCode: '',
-  nodeName: '',
-  auditorType: 'ROLE',
-  auditorValue: '',
-  status: 'ENABLE',
-  isDefault: '0',
-  sortNum: 0,
-  remark: ''
-});
-
 const nodeOptions = [
   { label: '修模效果图审核', value: 'REPAIR_PREVIEW_REVIEW' },
 
@@ -109,7 +108,13 @@ const nodeOptions = [
 
   { label: '打印材料录入通知', value: 'PRINT_MATERIAL_RECORD' },
 
-  { label: '只打印模型驳回通知', value: 'PRINT_MODEL_REJECT_NOTIFY' }
+  { label: '只打印模型驳回通知', value: 'PRINT_MODEL_REJECT_NOTIFY' },
+
+  { label: '协作负责人通知', value: 'COLLAB_MANAGER_NOTIFY' },
+
+  { label: '协作财务通知', value: 'COLLAB_FINANCE_NOTIFY' },
+
+  { label: '协作发货通知', value: 'COLLAB_DELIVERY_NOTIFY' }
 ];
 
 
